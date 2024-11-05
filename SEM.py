@@ -1,3 +1,7 @@
+import numpy as np
+import os
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
 from PIL import Image, ImageDraw, ImageFont
 import matplotlib.pyplot as plt
 import numpy as np
@@ -5,16 +9,47 @@ from torchvision import transforms
 import cv2
 import torch
 from scipy.spatial import Delaunay
-import os
-neutral_path = r"E:\style_exprGAN\ORL_data\choosed\neutral\5.png"
-smile_path = r"E:\style_exprGAN\ORL_data\choosed\smile\5.png"
-neutral_landmark_path = r"E:\style_exprGAN\ORL_data\choosed\neutral_feature_points\landmark_5.npy"
-smile_landmark_path = r"E:\style_exprGAN\ORL_data\choosed\smile_feature_points\landmark_5.npy"
-appearance_path = r"E:\style_exprGAN\ORL_data\choosed\appearance"
-os.makedirs(appearance_path, exist_ok=True)
-class Warp():
+import glob
+class SEM():
     def __init__(self):
-        self.x_warp = np.zeros((128,128))
+        self.threshold = 150
+        self.resize = (128,128)
+    def dataProcess(self, image_path):
+        data = cv2.imread(image_path)
+        data = cv2.resize(data, self.resize, interpolation=cv2.INTER_LINEAR)
+        data = cv2.cvtColor(data, cv2.COLOR_RGB2GRAY)
+        if data.ndim < 3:
+            data = cv2.merge([data, data, data])
+        else:
+            print("data dimension error")
+        data = np.array(data, dtype=np.float32)
+        return data
+    
+    def B_theta(self, x):
+        return np.where(x >= self.threshold, 0, 255)
+    
+
+    def semantic_or(self, x_gradCAM_path, y_gradCAM_path):
+        x_gradCAM = self.dataProcess(x_gradCAM_path)
+        y_gradCAM = self.dataProcess(y_gradCAM_path)
+        x_grad = self.B_theta(x_gradCAM)
+        y_grad = self.B_theta(y_gradCAM)
+        semantic_binary = np.bitwise_or(x_grad, y_grad)
+        plt.imshow(semantic_binary)
+        plt.show()
+        
+        return semantic_binary
+
+class Appearance():
+    def __init__(self):
+        self.resize = (128,128)
+        self.x_warp = np.zeros(self.resize)
+    
+    def dataProcess(self, image_path):
+        data = cv2.imread(image_path)
+        data = cv2.resize(data, self.resize, interpolation=cv2.INTER_LINEAR)
+        return data
+        
     def apply_affine_transform(self, src, src_tri, dst_tri, size):
         warp_mat = cv2.getAffineTransform(np.float32(src_tri), np.float32(dst_tri))
         return cv2.warpAffine(src, warp_mat, (size[0], size[1]), None, flags=cv2.INTER_LANCZOS4, borderMode=cv2.BORDER_REFLECT_101)
@@ -57,13 +92,18 @@ class Warp():
             blurred = cv2.ximgproc.guidedFilter(guide=mask, src=mask, radius=radius, eps=epsilon)
             #blurred = cv2.GaussianBlur(mask, (radius*2+1, radius*2+1), 0)
         
-        print(blurred.shape)
+        
         return blurred
     
     def B_theta(self, x, theta):
         return np.where(x >= theta, 255, 0)
 
-    def align_source_landmarks(self, source_image, source_landmarks, target_image, target_landmarks, thereshold=25, alpha=0.7, smooth_radius=10):
+
+
+    def align_source_landmarks(self, neutral_path, source_landmarks, smile_path, target_landmarks, thereshold=25, alpha=0.7, smooth_radius=10):
+        source_image = self.dataProcess(neutral_path)
+        target_image = self.dataProcess(smile_path)
+
         img = source_image.copy()
         
         tri = Delaunay(source_landmarks)
@@ -86,61 +126,64 @@ class Warp():
         target_image = np.uint8(target_image)
         abs_diff = np.abs(np.int16(result) - np.int16(target_image))
         abs_diff_mask = np.abs(np.int16(result_mask) - np.int16(target_image))
-        np.set_printoptions(threshold=np.inf)
-        #print(img)
-        #print(result)
-        #print(img_2)
-        print(abs_diff)
+        np.set_printoptions(threshold=np.inf)                
         M_appeaance = self.B_theta(abs_diff_mask, thereshold)
-        # plt.figure('target')
-        # plt.imshow(target_image)
-        plt.figure('abs')
-        plt.imshow(abs_diff)
+        
+        
         plt.figure('abs_mask')
         plt.imshow(abs_diff_mask)
         plt.figure('result_mask')
         plt.imshow(result_mask)
 
-        plt.figure('result')
-        plt.imshow(result)
+        
 
         
         
         return result, M_appeaance
     
-
+class style_map():
+    def __init__(self):
+        self.result_path = r"E:\style_exprGAN\ORL_data\choosed\style_map"
+        self.resize = (128,128)
     
+
+
+    def and_two_maps(self, semantic_map, appearance_map):
+        return np.bitwise_and(semantic_map, appearance_map)
+    
+    def save_smileMaps(self, semantic_map, appearance_map):
+        files = os.listdir(self.result_path)
+        maps = self.and_two_maps(semantic_map, appearance_map)
+        plt.figure('and map')
+        plt.imshow(maps)
+        
+        #np.save(os.path.join(self.result_path,'stylemap', {len(files)+1}), maps)
         
 
-if __name__ == '__main__':
-    new_size = (128, 128)
+if __name__ == "__main__":
+    new_size = (128,128)
+    neutral_gradCAM = r"E:\style_exprGAN\ORL_data\choosed\neutral_cam\CAM_neutral_5.png.jpg"
+    smile_gradCAM = r"E:\style_exprGAN\ORL_data\choosed\smile_cam\CAM_smile_5.png.jpg"
+    Semantic = SEM()
+    Map = style_map()
+    appearance = Appearance()
+    neutral_path = r"E:\style_exprGAN\ORL_data\choosed\neutral\2.png"
+    smile_path = r"E:\style_exprGAN\ORL_data\choosed\smile\2.png"
+    neutral_landmark_path = r"E:\style_exprGAN\ORL_data\choosed\neutral_feature_points\landmark_2.npy"
+    smile_landmark_path = r"E:\style_exprGAN\ORL_data\choosed\smile_feature_points\landmark_2.npy"
     
+    
+    semantic_map = Semantic.semantic_or(neutral_gradCAM, smile_gradCAM)
+
     neutral_landmark = np.load(neutral_landmark_path)
-    neutral_image = cv2.imread(neutral_path)
-    neutral_image = cv2.resize(neutral_image, new_size, interpolation=cv2.INTER_LINEAR)
-    
-    #neutral_image = cv2.resize(neutral_image, new_size, interpolation=cv2.INTER_LINEAR)
-    
-    
     smile_landmark = np.load(smile_landmark_path)
-    smile_image = cv2.imread(smile_path)
-    smile_image = cv2.resize(smile_image, new_size, interpolation=cv2.INTER_LINEAR)
     
-    print(f"smileimage:{smile_image.shape}")
-    #smile_image = cv2.resize(smile_image, new_size, interpolation=cv2.INTER_LINEAR)
+    result, appearance_map = appearance.align_source_landmarks(neutral_path, neutral_landmark, smile_path, smile_landmark, thereshold=30)
     
-    source_image = neutral_image
-    target_image = smile_image
+    Map.save_smileMaps(appearance_map, semantic_map)
     
     
-    source_landmarks = neutral_landmark
-    target_landmarks = smile_landmark
-    warpping = Warp()
-    result, minus = warpping.align_source_landmarks(source_image, source_landmarks, target_image, target_landmarks, thereshold=30)
-    plt.figure('neutral_image')
-    plt.imshow(neutral_image)
-    plt.figure('final')
-    plt.imshow(minus, cmap='gray')
+    plt.figure('appearance map')
+    plt.imshow(appearance_map, cmap='gray')
     plt.show()
-    
     

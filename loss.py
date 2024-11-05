@@ -30,33 +30,7 @@ class ExpressionClassifyLoss(nn.Module):
             target = torch.tensor([0,0]).to('cuda')
         else: 
             target = torch.tensor([1,1]).to('cuda')
-        output = entropy(predictions,target)
-        # input_probalities = F.softmax(predictions, dim=1)
-                
-        # print(input_probalities)
-        # if targets == 'neutral':            
-        #     target_prob = input_probalities[:,0]            
-        #     opposite_target_prob = input_probalities[:,1]
-        # else:
-        #     target_prob = input_probalities[:,1]
-        #     opposite_target_prob = input_probalities[:,0]
-        
-                
-        # true_class_probs = target_prob
-        # opposite_class_probs = opposite_target_prob
-        
-        # #print(f"exp true class_probs: {torch.exp(true_class_probs)}")
-        # #print(f"exp opposite class_probs {torch.exp(opposite_class_probs)}")
-            
-        
-        # demon = torch.exp(true_class_probs) + torch.exp(opposite_class_probs)
-        # if torch.all(demon == 0):
-        #     print(f"exp true class_probs: {torch.exp(true_class_probs)}")
-        #     print(f"exp opposite class_probs {torch.exp(opposite_class_probs)}")
-        #     return torch.tensor(float('nan'), device=predictions.device)
-        
-        # loss = -torch.log(torch.exp(true_class_probs) / demon)
-
+        output = entropy(predictions,target)        
         return output
     
 class IdClassifyLoss(nn.Module):
