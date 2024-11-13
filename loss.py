@@ -15,37 +15,36 @@ class TotalLoss(nn.Module):
         loss_attention_neutral = self.loss_attention(com_neutral, 'neutral')
         loss_attention_smile = self.loss_attention(com_smile, 'smile')
         total_loss = loss_express + loss_Id + loss_attention_neutral + loss_attention_smile
-
+        
         return total_loss
 class ExpressionClassifyLoss(nn.Module):
     def __init__(self,args):
         super(ExpressionClassifyLoss, self).__init__()        
         self.batch_size = args.batch_size
+        self.entropy = nn.CrossEntropyLoss()
     def forward(self, predictions, targets):
-        input_probalities = F.softmax(predictions, dim=1)
-                
-        print(input_probalities)
-        entropy = nn.CrossEntropyLoss()
+        
+        
         if targets == 'neutral':
-            target = torch.tensor([0,0]).to('cuda')
+            target = torch.zeros(self.batch_size, dtype=torch.long, device=predictions.device)
         else: 
-            target = torch.tensor([1,1]).to('cuda')
-        output = entropy(predictions,target)        
+            target = torch.ones(self.batch_size, dtype=torch.long, device=predictions.device)
+        output = self.entropy(predictions,target)
+        print(f"expression predict {predictions}")
+        print(f"expression target {target}")        
         return output
     
 class IdClassifyLoss(nn.Module):
     def __init__(self,args):
         super(IdClassifyLoss, self).__init__()
         self.batch_size = args.batch_size
-
-    def forward(self, abs_id, target):
-        entropy = nn.BCEWithLogitsLoss()     
-        print(f"abs_id :{abs_id}")
-        print(f"target: {target}")
+        self.entropy = nn.BCEWithLogitsLoss()
+    def forward(self, abs_id, target):            
+        
         output = abs_id
         target_tensor = target       
-        output = entropy(output, target_tensor)
-               
+        output = self.entropy(output, target_tensor)
+        print(f"Id loss {output}")
         return output
     
 
@@ -56,15 +55,14 @@ class AttentionLoss(nn.Module):
         self.batch_size = args.batch_size
 
     def forward(self, complentary_img_pred, targets):
-        probabilities = F.softmax(complentary_img_pred, dim=1)
-        
+        probabilities = F.softmax(complentary_img_pred, dim=1)        
         if targets == 'neutral':            
             target_prob = probabilities[:,0]            
             
         else:
             target_prob = probabilities[:,1]
             
-
+        print(f"attention loss {target_prob.mean()}")
         return target_prob.mean()
         
         

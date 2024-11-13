@@ -41,7 +41,7 @@ def Grad_CAM(model, original_tensor):
         neutral_cam_images.append(grayscale_cam)
         
     # 保存生成的 CAM 图像
-        cv2.imwrite(f"E:/style_exprGAN/ORL_data/choosed/neutral_cam/CAM_neutral_{original_tensor['neutral_name'][i]}.jpg", cam_image)  # 使用不同的文件名
+        cv2.imwrite(f"E:/style_exprGAN/data/neutral_gradCAM/CAM_neutral_{original_tensor['neutral_name'][i]}.jpg", cam_image)  # 使用不同的文件名
         complementary_x = complementary_img(grayscale_cam, original_tensor['neutral'][i])
         complementary_neutral_img.append(complementary_x)
         
@@ -60,7 +60,7 @@ def Grad_CAM(model, original_tensor):
         
         cam_image_smile = show_cam_on_image(img_np_smile, grayscale_cam_smile, use_rgb=True)
         
-        cv2.imwrite(f"E:/style_exprGAN/ORL_data/choosed/smile_cam/CAM_smile_{original_tensor['smile_name'][j]}.jpg", cam_image_smile)
+        cv2.imwrite(f"E:/style_exprGAN/data/smile_gradCAM/CAM_smile_{original_tensor['smile_name'][j]}.jpg", cam_image_smile)
         smile_cam_images.append(grayscale_cam_smile)
 
         complementary_y = complementary_img(grayscale_cam_smile, original_tensor['smile'][j])

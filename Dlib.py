@@ -11,8 +11,8 @@ transform = transforms.Compose([
         ])
 
 model_path = r"E:\style_exprGAN\model\shape_predictor_68_face_landmarks_GTX.dat"
-neutral_path = r"E:\style_exprGAN\ORL_data\choosed\data_neutral"
-smile_path = r"E:\style_exprGAN\ORL_data\choosed\data_smile"
+neutral_path = r"E:\style_exprGAN\data\neutral_crop"
+smile_path = r"E:\style_exprGAN\data\smile_crop"
 class Dlib():
     def __init__(self):
         self.face_detector = dlib.get_frontal_face_detector()
@@ -71,7 +71,10 @@ class Dlib():
         # 取得68個人臉關鍵點的座標
         landmarks = self.get_landmarks(img, self.face_detector, shape_predictor)
         print(landmarks)
-        np.save(f'E:/style_exprGAN/ORL_data/choosed/{emotion}_feature_points/landmark_{name}', landmarks)
+        save_path = f'E:/style_exprGAN/data/{emotion}_feature_points'
+        os.makedirs(save_path, exist_ok=True)
+        file_path = os.path.join(save_path, f'landmark_{name}.npy')
+        np.save(file_path, landmarks)
 
 
 

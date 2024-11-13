@@ -18,6 +18,7 @@ class Dataset(Dataset):
         self.smile_images = [f for f in os.listdir(smile_path)]
         self.transform = transforms.Compose([
             transforms.Resize((128, 128)),
+            transforms.RandomHorizontalFlip()
             
         ])
         self.noise_std = 70
