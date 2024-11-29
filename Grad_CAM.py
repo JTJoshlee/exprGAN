@@ -8,13 +8,13 @@ import torchvision
 import torch
 from Enc import EASNNetwork
 import matplotlib.pyplot as plt
-
+import os
 
 
 def Grad_CAM(model, original_tensor):
-    target_layer = [model.encoder.layers[-1]]
+    target_layer = [model.encoder.layers[-2]]
     model.eval()
-    batch_size = int(2)
+    batch_size = int(4)
     
     cam = GradCAM(model=model, target_layers=target_layer)
     targets_neutral = [ClassifierOutputTarget(0)]
@@ -23,6 +23,10 @@ def Grad_CAM(model, original_tensor):
     complementary_neutral_img = []
     smile_cam_images = []
     complementary_smile_img = []
+    neutral_output_dir = "E:/style_exprGAN/data/with_ID_attention_0.5layer-2_neutral"
+    os.makedirs(neutral_output_dir, exist_ok=True)
+    smile_output_dir = "E:/style_exprGAN/data/with_ID_attention_0.5_layer-2_smile"
+    os.makedirs(smile_output_dir, exist_ok=True)
     for i in range(batch_size):
         
         input_tensor = original_tensor['neutral'][i].unsqueeze(0)   
@@ -41,7 +45,9 @@ def Grad_CAM(model, original_tensor):
         neutral_cam_images.append(grayscale_cam)
         
     # 保存生成的 CAM 图像
-        cv2.imwrite(f"E:/style_exprGAN/data/neutral_gradCAM/CAM_neutral_{original_tensor['neutral_name'][i]}.jpg", cam_image)  # 使用不同的文件名
+        neutral_name = f"CAM_neutral_{original_tensor['neutral_name'][i]}.jpg"
+        neutral_path = os.path.join(neutral_output_dir, neutral_name)
+        cv2.imwrite(neutral_path, cam_image)  # 使用不同的文件名
         complementary_x = complementary_img(grayscale_cam, original_tensor['neutral'][i])
         complementary_neutral_img.append(complementary_x)
         
@@ -59,8 +65,10 @@ def Grad_CAM(model, original_tensor):
         img_np_smile = np.transpose(img_np_smile, (1,2,0))
         
         cam_image_smile = show_cam_on_image(img_np_smile, grayscale_cam_smile, use_rgb=True)
-        
-        cv2.imwrite(f"E:/style_exprGAN/data/smile_gradCAM/CAM_smile_{original_tensor['smile_name'][j]}.jpg", cam_image_smile)
+        smile_name = f"CAM_smile_{original_tensor['smile_name'][j]}.jpg"
+        smile_path = os.path.join(smile_output_dir, smile_name)
+        cv2.imwrite(smile_path, cam_image_smile)  # 使用不同的文件名
+        #cv2.imwrite(f"E:/style_exprGAN/data/layer-2_smile/CAM_smile_{original_tensor['smile_name'][j]}.jpg", cam_image_smile)
         smile_cam_images.append(grayscale_cam_smile)
 
         complementary_y = complementary_img(grayscale_cam_smile, original_tensor['smile'][j])
@@ -75,13 +83,12 @@ def Grad_CAM(model, original_tensor):
 
     return complementary_neutral_output, complementary_smile_output
 
-
 def complementary_img(Mcam_img, input_img):  
 
     Mcam_img_tensor = torch.tensor(Mcam_img).to('cuda')
     input_img_tensor = input_img.clone().detach()
 
-    alpha = 1.0
+    alpha = 10.0
     beta = 0.5
     
     delta = torch.sigmoid(alpha * (Mcam_img_tensor - beta))
@@ -92,13 +99,13 @@ def complementary_img(Mcam_img, input_img):
     if torch.isnan(complement_mask).any():
         print("NaN detected in complement_mask")
 
-    x_bar_j = input_img_tensor * complement_mask
-    if torch.isnan(x_bar_j).any():
+    mask_image = input_img_tensor * complement_mask
+    if torch.isnan(mask_image).any():
         print("NaN detected in x_bar_j")
     
-    x_bar_j_np = x_bar_j.detach().cpu().numpy()
+    mask_image = mask_image.detach().cpu().numpy()
     
-    return  x_bar_j_np
+    return  mask_image
 
 # 顯示互補圖像
    

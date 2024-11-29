@@ -22,6 +22,12 @@ class ResBlockReLU(nn.Module):
 class ResBlockReLUBN(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(ResBlockReLUBN, self).__init__()
+        # self.layers = nn.Sequential(
+        #     nn.Conv2d(in_channels, out_channels, kernel_size=5, stride=2, padding=2),  # First convolution layer
+        #     nn.LeakyReLU(0.02),  # LeakyReLU activation
+        #     nn.BatchNorm2d(out_channels),  # Batch normalization
+        # )
+        # self.shortcut = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=2)
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=5, stride=2, padding=2)
         self.relu = nn.LeakyReLU(0.02)
         self.bn = nn.BatchNorm2d(out_channels)
@@ -31,8 +37,8 @@ class ResBlockReLUBN(nn.Module):
             #self.shortcut = nn.Identity()
 
     def forward(self, x):
-        
-        return self.relu(self.bn(self.conv(x) + self.shortcut(x)))
+         return self.bn(self.relu(self.conv(x)+self.shortcut(x)))
+        # return self.relu(self.bn(self.conv(x) + self.shortcut(x)))
     
 class Encoder(nn.Module):
     def __init__(self, input_channels=1):
@@ -86,7 +92,7 @@ class EASNNetwork(nn.Module):
         return self.flatten_size
 
 class IdClassifier(nn.Module):
-    def __init__(self, flatten_size, conv_channels=64):
+    def __init__(self, conv_channels=64):
         super(IdClassifier, self).__init__()
 
         
@@ -98,11 +104,11 @@ class IdClassifier(nn.Module):
             nn.Sigmoid()            
         )
     
-        self.flatten_size = flatten_size
+        self.flatten_size = EASNNetwork().get_flatten_size()
         self.fc1 = nn.Linear(self.flatten_size, 256)
         self.fc2 = nn.Linear(256, 64)
         self.fc3 = nn.Linear(64, 1)
-        self.sig = nn.Sigmoid()
+        
     def forward(self, x, y):        
         xy_abs = torch.abs(x-y)
         features = self.conv_bn_sigmoid(xy_abs)       
@@ -112,9 +118,9 @@ class IdClassifier(nn.Module):
         out = self.fc1(flattened)
         out = self.fc2(out)
         out = self.fc3(out)
-        out = self.sig(out)        
+               
         
-        return out.squeeze()
+        return out
 
 
 

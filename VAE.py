@@ -1,20 +1,18 @@
 import torch
+import numpy as np
 from muse_maskgit_pytorch import VQGanVAE, VQGanVAETrainer
+from PIL import Image
 
-#smile_data_path = 
-
+image_path = r".\data\smile_crop\S010_006_00000015.png"
 vae = VQGanVAE(
-    dim = 256,
-    codebook_size = 65536
-)
-
-trainer = VQGanVAETrainer(
-    vae = vae,
-    image_size = 128,
-    folder = r'E:\style_exprGAN\ORL_data\choosed\test',
-    batch_size = 4,
-    grad_accum_every = 8,
-    num_train_steps = 50000
+    dim = 128,
+    vq_codebook_size = 256,
+    vq_codebook_dim = 256,
+    channels = 3
 ).cuda()
 
-trainer.train()
+
+vae.load_state_dict(torch.load('results/vae.5.pt'))
+smile_image = Image.open(image_path).convert('L')
+smile_image_np = np.array(smile_image)
+output = vae(smile_image_np)

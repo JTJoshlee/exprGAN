@@ -17,16 +17,45 @@ class Dataset(Dataset):
         self.neutral_images = [f for f in os.listdir(neutral_path)]
         self.smile_images = [f for f in os.listdir(smile_path)]
         self.transform = transforms.Compose([
-            transforms.Resize((128, 128)),
+            transforms.Resize((128, 128),antialias=True),
             transforms.RandomHorizontalFlip()
             
         ])
         self.noise_std = 70
-            
+        self.neutral_indices = list(range(len(self.neutral_images)))
+        self.smile_indices = list(range(len(self.smile_images)))
+        
+        random.shuffle(self.neutral_indices)
+        random.shuffle(self.smile_indices)
+        
+        self.neutral_used = set()  # 用來追蹤已選擇的 neutral 圖片索引
+        self.smile_used = set()    # 用來追蹤已選擇的 smile 圖片索引   
         
     def __getitem__(self, index):
-        neutral_idx = random.randint(0, len(self.neutral_images)-1)
-        smile_idx = random.randint(0, len(self.smile_images)-1)
+        if len(self.neutral_used) == len(self.neutral_images):
+            # 如果所有 neutral 圖片都已經選過，重置 neutral_used 並重新洗牌
+            self.neutral_used = set()
+            random.shuffle(self.neutral_indices)
+        
+        # 隨機選擇一個未使用的 neutral 索引
+        neutral_idx = self.neutral_indices[index % len(self.neutral_images)]
+        self.neutral_used.add(neutral_idx)
+        same_id_or_not = random.choice([0 ,1])
+        if same_id_or_not == 0:
+            smile_idx = neutral_idx
+        elif same_id_or_not == 1:     
+
+            # 檢查是否還有未選擇的 smile 索引
+            if len(self.smile_used) == len(self.smile_images):
+                # 如果所有 smile 圖片都已經選過，重置 smile_used 並重新洗牌
+                self.smile_used = set()
+                random.shuffle(self.smile_indices)
+            
+            # 隨機選擇一個未使用的 smile 索引
+            smile_idx = random.choice([i for i in range(len(self.smile_images)) if i not in self.smile_used])
+            
+            self.smile_used.add(smile_idx)
+
         
         neutral_img_path = os.path.join(self.neutral_path, self.neutral_images[neutral_idx])
         neutral_name = os.path.basename(neutral_img_path)
@@ -52,9 +81,9 @@ class Dataset(Dataset):
         #smile_tensor = self.transform(smile_img).to("cuda")
         
         if neutral_idx == smile_idx:
-            same_id = torch.tensor(1, device="cuda", dtype=torch.float)   
+            same_id = torch.tensor(1, device="cuda", dtype=torch.float).unsqueeze(0)   
         else:
-            same_id = torch.tensor(0, device="cuda", dtype=torch.float)
+            same_id = torch.tensor(0, device="cuda", dtype=torch.float).unsqueeze(0)
 
        
 
@@ -71,7 +100,7 @@ class Dataset(Dataset):
     
     def __len__(self):
         
-        return len(self.neutral_images) * len(self.smile_images)
+        return len(self.neutral_images)
 
 
 

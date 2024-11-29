@@ -2,19 +2,19 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class TotalLoss(nn.Module):
+class Expression_Loss(nn.Module):
     def __init__(self, args):
-        super(TotalLoss, self).__init__()
+        super(Expression_Loss, self).__init__()
         self.loss_expfn = ExpressionClassifyLoss(args)
         self.loss_Idfn = IdClassifyLoss(args)
         self.loss_attention = AttentionLoss(args)
 
-    def forward(self, output_neutral, output_smile, output_Id, batch, com_neutral, com_smile):
+    def forward(self, output_neutral, output_smile, com_neutral, com_smile, attention_argument):
         loss_express = self.loss_expfn(output_neutral, 'neutral') + self.loss_expfn(output_smile, 'smile')
-        loss_Id = self.loss_Idfn(output_Id, batch['same_id'])  
+        #loss_Id = self.loss_Idfn(output_Id, batch['same_id'])  
         loss_attention_neutral = self.loss_attention(com_neutral, 'neutral')
         loss_attention_smile = self.loss_attention(com_smile, 'smile')
-        total_loss = loss_express + loss_Id + loss_attention_neutral + loss_attention_smile
+        total_loss = loss_express + attention_argument*loss_attention_neutral + attention_argument*loss_attention_smile
         
         return total_loss
 class ExpressionClassifyLoss(nn.Module):
@@ -30,8 +30,7 @@ class ExpressionClassifyLoss(nn.Module):
         else: 
             target = torch.ones(self.batch_size, dtype=torch.long, device=predictions.device)
         output = self.entropy(predictions,target)
-        print(f"expression predict {predictions}")
-        print(f"expression target {target}")        
+                
         return output
     
 class IdClassifyLoss(nn.Module):
@@ -44,7 +43,7 @@ class IdClassifyLoss(nn.Module):
         output = abs_id
         target_tensor = target       
         output = self.entropy(output, target_tensor)
-        print(f"Id loss {output}")
+        
         return output
     
 
@@ -62,7 +61,7 @@ class AttentionLoss(nn.Module):
         else:
             target_prob = probabilities[:,1]
             
-        print(f"attention loss {target_prob.mean()}")
+        
         return target_prob.mean()
         
         
