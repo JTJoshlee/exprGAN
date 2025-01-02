@@ -11,9 +11,9 @@ print(torch.cuda.is_available())
 class ResBlockReLU(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(ResBlockReLU, self).__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=5, stride=2, padding=2)
+        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size=5, stride=2, padding=2)
         self.relu = nn.LeakyReLU(0.02)        
-        self.shortcut = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=2)
+        self.shortcut = nn.Conv3d(in_channels, out_channels, kernel_size=1, stride=2)
         
         
     def forward(self, x):
@@ -28,11 +28,11 @@ class ResBlockReLUBN(nn.Module):
         #     nn.BatchNorm2d(out_channels),  # Batch normalization
         # )
         # self.shortcut = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=2)
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=5, stride=2, padding=2)
+        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size=5, stride=2, padding=2)
         self.relu = nn.LeakyReLU(0.02)
-        self.bn = nn.BatchNorm2d(out_channels)
+        self.bn = nn.BatchNorm3d(out_channels)
         #if in_channels != out_channels:
-        self.shortcut = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=2)
+        self.shortcut = nn.Conv3d(in_channels, out_channels, kernel_size=1, stride=2)
         #else:
             #self.shortcut = nn.Identity()
 
@@ -76,7 +76,7 @@ class EASNNetwork(nn.Module):
         
         # calculate the size of the flattened feature vector
         with torch.no_grad():
-            dummy_input = torch.zeros(1, input_channels, 128, 128)
+            dummy_input = torch.zeros(1, input_channels, 128, 128, 3)
             encoded_output = self.encoder(dummy_input)
             encoded_size = encoded_output.view(1, -1).size(1)
         self.flatten_size = encoded_size
@@ -99,8 +99,8 @@ class IdClassifier(nn.Module):
         self.encoder_ouput_dim = 512
         
         self.conv_bn_sigmoid = nn.Sequential(
-            nn.Conv2d(self.encoder_ouput_dim, conv_channels, kernel_size=5, stride=2, padding=2),
-            nn.BatchNorm2d(conv_channels),            
+            nn.Conv3d(self.encoder_ouput_dim, conv_channels, kernel_size=5, stride=2, padding=2),
+            nn.BatchNorm3d(conv_channels),            
             nn.Sigmoid()            
         )
     
@@ -111,8 +111,8 @@ class IdClassifier(nn.Module):
         
     def forward(self, x, y):        
         xy_abs = torch.abs(x-y)
-        features = self.conv_bn_sigmoid(xy_abs)       
-        self.flatten_size = features.shape[1] * features.shape[2] * features.shape[3]
+        features = self.conv_bn_sigmoid(xy_abs)               
+        self.flatten_size = features.shape[1] * features.shape[2] * features.shape[3] * features.shape[4]
         self.fc1 = nn.Linear(self.flatten_size, 256).to(features.device)
         flattened = features.view(features.size(0), -1)
         out = self.fc1(flattened)

@@ -37,9 +37,13 @@ def Grad_CAM(model, original_tensor):
         
         img_np = original_tensor['neutral'][i].cpu().detach().numpy()  # 提取第 i 个图像并转换为 numpy
         
-        img_np = np.transpose(img_np, (1, 2, 0))  # 转换为 (H, W, C)
-    
+
+        img_np = img_np.squeeze(0)                
+        #img_np = np.transpose(img_np, (1, 2, 0))  # 转换为 (H, W, C)
+        
+        
     # 将 Grad-CAM 映射到原始图像
+        
         cam_image = show_cam_on_image(img_np, grayscale_cam, use_rgb=True)
         
         neutral_cam_images.append(grayscale_cam)
@@ -62,7 +66,8 @@ def Grad_CAM(model, original_tensor):
         grayscale_cam_smile = cam(input_tensor=input_tensor_smile, targets=targets_smile)
         grayscale_cam_smile = grayscale_cam_smile[0,:]
         img_np_smile = original_tensor['smile'][j].cpu().detach().numpy()
-        img_np_smile = np.transpose(img_np_smile, (1,2,0))
+        img_np_smile = img_np_smile.squeeze(0)
+        #img_np_smile = np.transpose(img_np_smile, (1,2,0))
         
         cam_image_smile = show_cam_on_image(img_np_smile, grayscale_cam_smile, use_rgb=True)
         smile_name = f"CAM_smile_{original_tensor['smile_name'][j]}.jpg"

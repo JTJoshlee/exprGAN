@@ -11,8 +11,8 @@ transform = transforms.Compose([
         ])
 
 model_path = r"E:\style_exprGAN\model\shape_predictor_68_face_landmarks_GTX.dat"
-neutral_path = r"E:\style_exprGAN\data\neutral_crop"
-smile_path = r"E:\style_exprGAN\data\smile_crop"
+neutral_path = r"E:\style_exprGAN\data\neutral_crop_128"
+smile_path = r"E:\style_exprGAN\data\smile_crop_128"
 class Dlib():
     def __init__(self):
         self.face_detector = dlib.get_frontal_face_detector()
@@ -38,7 +38,7 @@ class Dlib():
         image = Image.open(file_path).convert('L')
 
         image = transform(image)
-
+        print(f"image size{image.size}")
         img = np.array(image)
 
         dets = self.face_detector(img, 0)

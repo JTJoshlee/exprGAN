@@ -9,13 +9,16 @@ import cv2
 import torch
 from scipy.spatial import Delaunay
 import glob
+
 class SEM():
     def __init__(self):
         self.threshold = 150
         self.resize = (128,128)
     def dataProcess(self, image_path):
         data = cv2.imread(image_path)
-        data = cv2.resize(data, self.resize, interpolation=cv2.INTER_LINEAR)
+        
+    
+        #data = cv2.resize(data, self.resize, interpolation=cv2.INTER_LINEAR)
         data = cv2.cvtColor(data, cv2.COLOR_RGB2GRAY)
         if data.ndim < 3:
             data = cv2.merge([data, data, data])
@@ -33,9 +36,12 @@ class SEM():
         y_gradCAM = self.dataProcess(y_gradCAM_path)
         x_grad = self.B_theta(x_gradCAM)
         y_grad = self.B_theta(y_gradCAM)
+        
         semantic_binary = np.bitwise_or(x_grad, y_grad)
-        plt.imshow(semantic_binary)
-        plt.show()
+        
+        #print("semantic binary", semantic_binary.shape)
+        # plt.imshow(semantic_binary)
+        # plt.show()
         
         return semantic_binary
 
@@ -45,13 +51,24 @@ class Appearance():
         self.x_warp = np.zeros(self.resize)
     
     def dataProcess(self, image_path):
-        data = cv2.imread(image_path)
+        data = cv2.imread(image_path)              
         data = cv2.resize(data, self.resize, interpolation=cv2.INTER_LINEAR)
+        
         return data
         
     def apply_affine_transform(self, src, src_tri, dst_tri, size):
+        
+        
+        
         warp_mat = cv2.getAffineTransform(np.float32(src_tri), np.float32(dst_tri))
-        return cv2.warpAffine(src, warp_mat, (size[0], size[1]), None, flags=cv2.INTER_LANCZOS4, borderMode=cv2.BORDER_REFLECT_101)
+        
+              
+
+        transformed_img = cv2.warpAffine(src, warp_mat, (size[0], size[1]), None, flags=cv2.INTER_LANCZOS4, borderMode=cv2.BORDER_REFLECT_101)
+
+        
+        
+        return transformed_img
     
     def morph_triangle(self, img, t1, t2, t, alpha):
         r1 = cv2.boundingRect(np.float32([t1]))
@@ -71,8 +88,9 @@ class Appearance():
 
         size = (r[2], r[3])
         warp_image = self.apply_affine_transform(img1_rect, t1_rect, t_rect, size)
-
+        
         interpolated = cv2.addWeighted(img[r[1]:r[1]+r[3], r[0]:r[0]+r[2]], 1-alpha, warp_image, alpha, 0)
+        
         img[r[1]:r[1]+r[3], r[0]:r[0]+r[2]] = img[r[1]:r[1]+r[3], r[0]:r[0]+r[2]] * (1 - mask) + interpolated * mask
 
 
@@ -126,63 +144,108 @@ class Appearance():
         abs_diff = np.abs(np.int16(result) - np.int16(target_image))
         abs_diff_mask = np.abs(np.int16(result_mask) - np.int16(target_image))
         np.set_printoptions(threshold=np.inf)                
-        M_appeaance = self.B_theta(abs_diff_mask, thereshold)
+        M_appearance = self.B_theta(abs_diff_mask, thereshold)        
         
         
-        plt.figure('abs_mask')
-        plt.imshow(abs_diff_mask)
-        plt.figure('result_mask')
-        plt.imshow(result_mask)
+        
+        # plt.figure('abs_mask')
+        # plt.imshow(abs_diff_mask)
+        # plt.figure('result_mask')
+        # plt.imshow(result_mask)
 
         
 
         
         
-        return result, M_appeaance
+        return result, M_appearance
     
 class style_map():
     def __init__(self):
-        self.result_path = r"E:\style_exprGAN\ORL_data\choosed\style_map"
+        self.result_path = r"E:\style_exprGAN\data\appearance_map"
         self.resize = (128,128)
     
 
 
     def and_two_maps(self, semantic_map, appearance_map):
+        
+        semantic_map = semantic_map.astype(np.uint32)
+        appearance_map = appearance_map.astype(np.uint32)
         return np.bitwise_and(semantic_map, appearance_map)
     
-    def save_smileMaps(self, semantic_map, appearance_map):
-        files = os.listdir(self.result_path)
+    def save_smileMaps(self, semantic_map, appearance_map, image_path):
+        # image_name = os.path.basename(image_path)
+        # image_name = os.path.splitext(image_name)[0]
+        #files = os.listdir(self.result_path)
         maps = self.and_two_maps(semantic_map, appearance_map)
-        plt.figure('and map')
-        plt.imshow(maps)
         
-        #np.save(os.path.join(self.result_path,'stylemap', {len(files)+1}), maps)
+        # plt.figure('and map')
+        # plt.imshow(maps)
+        # plt.show()
+        maps = (maps - maps.min()) / (maps.max() - maps.min()) * 255  # 標準化到 0-255
+        maps = maps.astype(np.uint8)
+        image = Image.fromarray(maps)
+        save_path = os.path.join(self.result_path, f"{image_path}.png")
+        # plt.imshow(image)
+        # plt.show()
+        image.save(save_path, format="PNG")
         
 
 if __name__ == "__main__":
     new_size = (128,128)
-    neutral_gradCAM = r"E:\style_exprGAN\ORL_data\choosed\neutral_cam\CAM_neutral_5.png.jpg"
-    smile_gradCAM = r"E:\style_exprGAN\ORL_data\choosed\smile_cam\CAM_smile_5.png.jpg"
+    neutral_gradCAM = r"E:\style_exprGAN\data\attention_0.5layer-2_neutral"
+    smile_gradCAM = r"E:\style_exprGAN\data\attention_0.5_layer-2_smile"
     Semantic = SEM()
     Map = style_map()
     appearance = Appearance()
-    neutral_path = r"E:\style_exprGAN\ORL_data\choosed\neutral\2.png"
-    smile_path = r"E:\style_exprGAN\ORL_data\choosed\smile\2.png"
-    neutral_landmark_path = r"E:\style_exprGAN\ORL_data\choosed\neutral_feature_points\landmark_2.npy"
-    smile_landmark_path = r"E:\style_exprGAN\ORL_data\choosed\smile_feature_points\landmark_2.npy"
+    neutral_file = r"E:\style_exprGAN\data\neutral_crop_128"
+    smile_file = r"E:\style_exprGAN\data\smile_crop_128"
+    neutral_landmark_file = r"E:\style_exprGAN\data\neutral_feature_points"
+    smile_landmark_file = r"E:\style_exprGAN\data\smile_feature_points"
+    idx = 0
+    for image in os.listdir(neutral_file):
+        neutral_image_name = os.path.splitext(image)[0]
+        neutral_image_path = os.path.join(neutral_file, image)        
+        smile_image = os.listdir(smile_file)
+        smile_image_name = os.path.basename(smile_image[idx])
+        
+        smile_image_name = os.path.splitext(smile_image_name)[0]        
+        neutral_gradCAM_image = os.path.join(neutral_gradCAM,f'CAM_neutral_{neutral_image_name}.png.jpg')
+        smile_gradCAM_image = os.path.join(smile_gradCAM,f'CAM_smile_{smile_image_name}.png.jpg')
+        semantic_map = Semantic.semantic_or(neutral_gradCAM_image,smile_gradCAM_image)
+        neutral_landmark = os.path.join(neutral_landmark_file,f'landmark_{neutral_image_name}.npy')
+        smile_landmark = os.path.join(smile_landmark_file,f'landmark_{smile_image_name}.npy')
+        
+        neutral_landmark_np = np.load(neutral_landmark)
+        smile_landmark_np = np.load(smile_landmark)
+        smile_image_path = os.path.join(smile_file, smile_image[idx])
+        result, appearance_map = appearance.align_source_landmarks(neutral_image_path, neutral_landmark_np, smile_image_path, smile_landmark_np, thereshold=30)
+        # plt.figure('semantic map')
+        # plt.imshow(semantic_map, cmap='gray')
+        
+        
+        # plt.figure('appearance map')
+        # plt.imshow(appearance_map, cmap='gray')
+        
+        # plt.show()
     
-    
-    semantic_map = Semantic.semantic_or(neutral_gradCAM, smile_gradCAM)
 
-    neutral_landmark = np.load(neutral_landmark_path)
-    smile_landmark = np.load(smile_landmark_path)
+        Map.save_smileMaps(appearance_map, semantic_map, smile_image_name)
+        
+        idx += 1
+    # semantic_map = Semantic.semantic_or(neutral_gradCAM, smile_gradCAM)
     
-    result, appearance_map = appearance.align_source_landmarks(neutral_path, neutral_landmark, smile_path, smile_landmark, thereshold=30)
+
+    # neutral_landmark = np.load(neutral_landmark_path)
+    # smile_landmark = np.load(smile_landmark_path)
     
-    Map.save_smileMaps(appearance_map, semantic_map)
+    # result, appearance_map = appearance.align_source_landmarks(neutral_path, neutral_landmark, smile_path, smile_landmark, thereshold=30)
+    
+    # Map.save_smileMaps(appearance_map, semantic_map, neutral_path)
+    # plt.figure('semantic map')
+    # plt.imshow(semantic_map, cmap='gray')
     
     
-    plt.figure('appearance map')
-    plt.imshow(appearance_map, cmap='gray')
-    plt.show()
+    # plt.figure('appearance map')
+    # plt.imshow(appearance_map, cmap='gray')
+    # plt.show()
     

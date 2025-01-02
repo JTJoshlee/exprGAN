@@ -6,11 +6,11 @@ import cv2
 import torch
 from scipy.spatial import Delaunay
 import os
-neutral_path = r"E:\style_exprGAN\ORL_data\choosed\neutral\5.png"
-smile_path = r"E:\style_exprGAN\ORL_data\choosed\smile\5.png"
-neutral_landmark_path = r"E:\style_exprGAN\ORL_data\choosed\neutral_feature_points\landmark_5.npy"
-smile_landmark_path = r"E:\style_exprGAN\ORL_data\choosed\smile_feature_points\landmark_5.npy"
-appearance_path = r"E:\style_exprGAN\ORL_data\choosed\appearance"
+neutral_path = r"E:\style_exprGAN\data\neutral_crop\S092_004_00000001.png"
+smile_path = r"E:\style_exprGAN\data\smile_crop\S092_004_00000024.png"
+neutral_landmark_path = r"E:\style_exprGAN\data\neutral_feature_points\landmark_S092_004_00000001.npy"
+smile_landmark_path = r"E:\style_exprGAN\data\smile_feature_points\landmark_S092_004_00000024.npy"
+appearance_path = r"E:\style_exprGAN\data\appearance"
 os.makedirs(appearance_path, exist_ok=True)
 class Warp():
     def __init__(self):

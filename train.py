@@ -20,9 +20,9 @@ class Args(dict):
 args = {
     'device' : 'cuda',
     'batch_size' : int(4),
-    'epoch' : 3000,
-    'neutral_path' : r".\data\neutral_crop",
-    'smile_path' : r".\data\smile_crop",
+    'epoch' : 10000,
+    'neutral_path' : r".\data\neutral_crop_128",
+    'smile_path' : r".\data\smile_crop_128",
     'neutral_test_path' : r".\data\test_data\test_neutral",
     'smile_test_path' : r".\data\test_data\test_smile",
     'export_path' : r".\model\with_ID\model_weights",
@@ -40,8 +40,8 @@ kfold = KFold(n_splits = 4, shuffle = True)
 
 ID_loss = IdClassifyLoss(args)
 loss = Expression_Loss(args)
-opt_Enc = torch.optim.RAdam(model_Enc.parameters(), lr=0.001)
-opt_Id =  torch.optim.RAdam(model_Id.parameters(), lr=0.001)
+opt_Enc = torch.optim.Adam(model_Enc.parameters(), lr=0.001)
+opt_Id =  torch.optim.Adam(model_Id.parameters(), lr=0.001)
 scheduler_Enc = ReduceLROnPlateau(opt_Enc, mode='min', factor=0.5, patience=5, min_lr=1e-6)
 #opt_Id = torch.optim.RAdam(model_Id.parameters(), lr=0.001)
 scheduler_Id = ReduceLROnPlateau(opt_Id, mode='min', factor=0.5, patience=5, min_lr=1e-6)
@@ -155,6 +155,7 @@ for epoch in range(args.epoch):
             for batch in test_loader:
                 input_neutral = batch['neutral']
                 input_smile = batch['smile']
+                
                 output_smile, x_encoded = model_Enc(input_smile)
                 output_neutral, y_encoded = model_Enc(input_neutral)
                 _, predicted_smile = torch.max(output_smile, 1)

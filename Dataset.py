@@ -17,7 +17,7 @@ class Dataset(Dataset):
         self.neutral_images = [f for f in os.listdir(neutral_path)]
         self.smile_images = [f for f in os.listdir(smile_path)]
         self.transform = transforms.Compose([
-            transforms.Resize((128, 128),antialias=True),
+            #transforms.Resize((128, 128),antialias=True),
             transforms.RandomHorizontalFlip()
             
         ])
@@ -44,7 +44,7 @@ class Dataset(Dataset):
         if same_id_or_not == 0:
             smile_idx = neutral_idx
         elif same_id_or_not == 1:     
-
+            
             # 檢查是否還有未選擇的 smile 索引
             if len(self.smile_used) == len(self.smile_images):
                 # 如果所有 smile 圖片都已經選過，重置 smile_used 並重新洗牌
@@ -59,19 +59,21 @@ class Dataset(Dataset):
         
         neutral_img_path = os.path.join(self.neutral_path, self.neutral_images[neutral_idx])
         neutral_name = os.path.basename(neutral_img_path)
-        neutral_img = Image.open(neutral_img_path).convert('L')
+        neutral_img = Image.open(neutral_img_path)
         neutral_img_np = np.array(neutral_img)
         noise = np.random.randn(*neutral_img_np.shape) * self.noise_std
         noisy_image = np.clip(neutral_img_np + noise, 0, 255).astype(np.uint8)
         noisy_image_tensor = torch.from_numpy(noisy_image).float() / 255.0      
         noisy_image_tensor = noisy_image_tensor.unsqueeze(0)
         neutral_tensor = self.transform(noisy_image_tensor).to("cuda")
-        same_id = torch.tensor(0, device="cuda", dtype=torch.float)  
-        
+        same_id = torch.tensor(0, device="cuda", dtype=torch.float)
+        # print("image tensor", neutral_img.size)
+        # print("noise tensor", noisy_image_tensor.shape)  
+        # print("neutral tensor", neutral_tensor.shape)
         
         smile_img_path = os.path.join(self.smile_path, self.smile_images[smile_idx])
         smile_name = os.path.basename(smile_img_path)
-        smile_img = Image.open(smile_img_path).convert('L')
+        smile_img = Image.open(smile_img_path)
         smile_img_np = np.array(smile_img)
         noise = np.random.randn(*smile_img_np.shape) * self.noise_std
         smile_image = np.clip(smile_img_np + noise, 0, 255).astype(np.uint8)
