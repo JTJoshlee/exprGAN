@@ -15,7 +15,9 @@ class Expression_Loss(nn.Module):
         loss_attention_neutral = self.loss_attention(com_neutral, 'neutral')
         loss_attention_smile = self.loss_attention(com_smile, 'smile')
         total_loss = loss_express + attention_argument*loss_attention_neutral + attention_argument*loss_attention_smile
-        
+        # print("loss express", loss_express)
+        # print("loss_attention_neutral", loss_attention_neutral)
+        # print("loss attention smile", loss_attention_smile)
         return total_loss
 class ExpressionClassifyLoss(nn.Module):
     def __init__(self,args):

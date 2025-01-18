@@ -11,12 +11,13 @@ print(torch.cuda.is_available())
 class ResBlockReLU(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(ResBlockReLU, self).__init__()
-        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size=5, stride=2, padding=2)
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=5, stride=2, padding=2)
         self.relu = nn.LeakyReLU(0.02)        
-        self.shortcut = nn.Conv3d(in_channels, out_channels, kernel_size=1, stride=2)
+        self.shortcut = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=2)
         
         
     def forward(self, x):
+        
         return self.relu(self.conv(x) + self.shortcut(x))
     
 class ResBlockReLUBN(nn.Module):
@@ -28,11 +29,11 @@ class ResBlockReLUBN(nn.Module):
         #     nn.BatchNorm2d(out_channels),  # Batch normalization
         # )
         # self.shortcut = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=2)
-        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size=5, stride=2, padding=2)
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=5, stride=2, padding=2)
         self.relu = nn.LeakyReLU(0.02)
-        self.bn = nn.BatchNorm3d(out_channels)
+        self.bn = nn.BatchNorm2d(out_channels)
         #if in_channels != out_channels:
-        self.shortcut = nn.Conv3d(in_channels, out_channels, kernel_size=1, stride=2)
+        self.shortcut = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=2)
         #else:
             #self.shortcut = nn.Identity()
 
@@ -41,14 +42,14 @@ class ResBlockReLUBN(nn.Module):
         # return self.relu(self.bn(self.conv(x) + self.shortcut(x)))
     
 class Encoder(nn.Module):
-    def __init__(self, input_channels=1):
+    def __init__(self, input_channels=3):
         super(Encoder, self).__init__()
         self.layers = nn.Sequential(
-            ResBlockReLU(input_channels, 64),
+            ResBlockReLU(input_channels, 32),
+            ResBlockReLUBN(32,64),
             ResBlockReLUBN(64,128),
             ResBlockReLUBN(128,256),
-            ResBlockReLUBN(256,512),
-            ResBlockReLUBN(512,512)
+            ResBlockReLUBN(256,256)
         )
 
     def forward(self, x):       
@@ -59,30 +60,38 @@ class ExpressionClassifier(nn.Module):
         super(ExpressionClassifier, self).__init__()
         self.fc = nn.Sequential(
             nn.Linear(input_size, 256),
-            nn.ReLU(),
-            nn.Linear(256,2)
+            nn.Linear(256, 2),
+            
         )
+        # self.fc = nn.Sequential(
+        #     nn.Linear(input_size, 256),
+        #     nn.ReLU(),
+        #     nn.Linear(256,2)
+        # )
     
     def forward(self, x):
-        x_flat = x.view(x.size(0), -1)                
+        x_flat = x.reshape(x.size(0), -1)                
         x_flat = self.fc(x_flat)              
         return x_flat 
     
 class EASNNetwork(nn.Module):
-    def __init__(self, input_channels=1):
+    def __init__(self, input_channels=3):
         super(EASNNetwork, self).__init__()
         
         self.encoder = Encoder(input_channels)
         
         # calculate the size of the flattened feature vector
         with torch.no_grad():
-            dummy_input = torch.zeros(1, input_channels, 128, 128, 3)
+            dummy_input = torch.zeros(1, 3, 128, 128)
             encoded_output = self.encoder(dummy_input)
             encoded_size = encoded_output.view(1, -1).size(1)
+        
         self.flatten_size = encoded_size
+       
         self.ExpressionClassifier = ExpressionClassifier(encoded_size)
         #self.IdClassifier = IdClassifier(encoder_output_dim=512, flatten_size=encoded_size)
-    def forward(self, x):       
+    def forward(self, x):
+        
         x_encoded = self.encoder(x)        
         neutral = self.ExpressionClassifier(x_encoded)       
         return neutral, x_encoded
@@ -96,11 +105,11 @@ class IdClassifier(nn.Module):
         super(IdClassifier, self).__init__()
 
         
-        self.encoder_ouput_dim = 512
+        self.encoder_ouput_dim = 256
         
         self.conv_bn_sigmoid = nn.Sequential(
-            nn.Conv3d(self.encoder_ouput_dim, conv_channels, kernel_size=5, stride=2, padding=2),
-            nn.BatchNorm3d(conv_channels),            
+            nn.Conv2d(self.encoder_ouput_dim, conv_channels, kernel_size=5, stride=2, padding=2),
+            nn.BatchNorm2d(conv_channels),            
             nn.Sigmoid()            
         )
     
@@ -112,7 +121,7 @@ class IdClassifier(nn.Module):
     def forward(self, x, y):        
         xy_abs = torch.abs(x-y)
         features = self.conv_bn_sigmoid(xy_abs)               
-        self.flatten_size = features.shape[1] * features.shape[2] * features.shape[3] * features.shape[4]
+        self.flatten_size = features.shape[1] * features.shape[2] * features.shape[3]
         self.fc1 = nn.Linear(self.flatten_size, 256).to(features.device)
         flattened = features.view(features.size(0), -1)
         out = self.fc1(flattened)

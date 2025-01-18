@@ -17,17 +17,21 @@ class SEM():
     def dataProcess(self, image_path):
         data = cv2.imread(image_path)
         
-    
         #data = cv2.resize(data, self.resize, interpolation=cv2.INTER_LINEAR)
-        data = cv2.cvtColor(data, cv2.COLOR_RGB2GRAY)
-        if data.ndim < 3:
-            data = cv2.merge([data, data, data])
-        else:
-            print("data dimension error")
-        data = np.array(data, dtype=np.float32)
+        # data = cv2.cvtColor(data, cv2.COLOR_RGB2GRAY)
+        # if data.ndim < 3:
+        #     data = cv2.merge([data, data, data])
+        # else:
+        #     print("data dimension error")
+       #data = np.array(data, dtype=np.uint8)
+        plt.figure("data")
+        plt.imshow(data)
+        
+
         return data
     
-    def B_theta(self, x):
+    def B_theta(self, x):        
+        
         return np.where(x >= self.threshold, 0, 255)
     
 
@@ -39,9 +43,10 @@ class SEM():
         
         semantic_binary = np.bitwise_or(x_grad, y_grad)
         
-        #print("semantic binary", semantic_binary.shape)
-        # plt.imshow(semantic_binary)
-        # plt.show()
+        print("semantic binary", semantic_binary.shape)
+        plt.figure("semantic_binary")
+        plt.imshow(semantic_binary)
+        plt.show()
         
         return semantic_binary
 
@@ -178,9 +183,9 @@ class style_map():
         #files = os.listdir(self.result_path)
         maps = self.and_two_maps(semantic_map, appearance_map)
         
-        # plt.figure('and map')
-        # plt.imshow(maps)
-        # plt.show()
+        plt.figure('and map')
+        plt.imshow(maps)
+        plt.show()
         maps = (maps - maps.min()) / (maps.max() - maps.min()) * 255  # 標準化到 0-255
         maps = maps.astype(np.uint8)
         image = Image.fromarray(maps)
@@ -192,13 +197,13 @@ class style_map():
 
 if __name__ == "__main__":
     new_size = (128,128)
-    neutral_gradCAM = r"E:\style_exprGAN\data\attention_0.5layer-2_neutral"
-    smile_gradCAM = r"E:\style_exprGAN\data\attention_0.5_layer-2_smile"
+    neutral_gradCAM = r"E:\style_exprGAN\data\neutral\graycam"
+    smile_gradCAM = r"E:\style_exprGAN\data\smile\graycam"
     Semantic = SEM()
     Map = style_map()
     appearance = Appearance()
-    neutral_file = r"E:\style_exprGAN\data\neutral_crop_128"
-    smile_file = r"E:\style_exprGAN\data\smile_crop_128"
+    neutral_file = r"E:\style_exprGAN\data\neutral_crop_align_128"
+    smile_file = r"E:\style_exprGAN\data\smile_crop_align_128"
     neutral_landmark_file = r"E:\style_exprGAN\data\neutral_feature_points"
     smile_landmark_file = r"E:\style_exprGAN\data\smile_feature_points"
     idx = 0
@@ -209,8 +214,8 @@ if __name__ == "__main__":
         smile_image_name = os.path.basename(smile_image[idx])
         
         smile_image_name = os.path.splitext(smile_image_name)[0]        
-        neutral_gradCAM_image = os.path.join(neutral_gradCAM,f'CAM_neutral_{neutral_image_name}.png.jpg')
-        smile_gradCAM_image = os.path.join(smile_gradCAM,f'CAM_smile_{smile_image_name}.png.jpg')
+        neutral_gradCAM_image = os.path.join(neutral_gradCAM,f'graycam_neutral_{neutral_image_name}.png.jpg')
+        smile_gradCAM_image = os.path.join(smile_gradCAM,f'graycam_smile_{smile_image_name}.png.jpg')
         semantic_map = Semantic.semantic_or(neutral_gradCAM_image,smile_gradCAM_image)
         neutral_landmark = os.path.join(neutral_landmark_file,f'landmark_{neutral_image_name}.npy')
         smile_landmark = os.path.join(smile_landmark_file,f'landmark_{smile_image_name}.npy')

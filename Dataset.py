@@ -61,11 +61,13 @@ class Dataset(Dataset):
         neutral_name = os.path.basename(neutral_img_path)
         neutral_img = Image.open(neutral_img_path)
         neutral_img_np = np.array(neutral_img)
-        noise = np.random.randn(*neutral_img_np.shape) * self.noise_std
-        noisy_image = np.clip(neutral_img_np + noise, 0, 255).astype(np.uint8)
-        noisy_image_tensor = torch.from_numpy(noisy_image).float() / 255.0      
-        noisy_image_tensor = noisy_image_tensor.unsqueeze(0)
-        neutral_tensor = self.transform(noisy_image_tensor).to("cuda")
+        # noise = np.random.randn(*neutral_img_np.shape) * self.noise_std
+        # noisy_image = np.clip(neutral_img_np + noise, 0, 255).astype(np.uint8)
+        # noisy_image_tensor = torch.from_numpy(noisy_image).float() / 255.0      
+        #neutral_tensor = self.transform(noisy_image_tensor).to("cuda")
+        neutral_img_np = torch.from_numpy(neutral_img_np).float() / 255.0
+        neutral_tensor = self.transform(neutral_img_np).to("cuda")
+        neutral_tensor = neutral_tensor.permute(2, 0, 1)
         same_id = torch.tensor(0, device="cuda", dtype=torch.float)
         # print("image tensor", neutral_img.size)
         # print("noise tensor", noisy_image_tensor.shape)  
@@ -75,11 +77,13 @@ class Dataset(Dataset):
         smile_name = os.path.basename(smile_img_path)
         smile_img = Image.open(smile_img_path)
         smile_img_np = np.array(smile_img)
-        noise = np.random.randn(*smile_img_np.shape) * self.noise_std
-        smile_image = np.clip(smile_img_np + noise, 0, 255).astype(np.uint8)
-        smile_image_tensor = torch.from_numpy(smile_image).float() / 255.0      
-        smile_image_tensor = smile_image_tensor.unsqueeze(0)
-        smile_tensor = self.transform(smile_image_tensor).to("cuda")        
+        # noise = np.random.randn(*smile_img_np.shape) * self.noise_std
+        # smile_image = np.clip(smile_img_np + noise, 0, 255).astype(np.uint8)
+        # smile_image_tensor = torch.from_numpy(smile_image).float() / 255.0    
+        # smile_tensor = self.transform(smile_image_tensor).to("cuda")
+        smile_img_np = torch.from_numpy(smile_img_np).float() / 255.0
+        smile_tensor = self.transform(smile_img_np).to("cuda")
+        smile_tensor = smile_tensor.permute(2, 0, 1)        
         #smile_tensor = self.transform(smile_img).to("cuda")
         
         if neutral_idx == smile_idx:

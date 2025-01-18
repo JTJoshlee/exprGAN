@@ -2,12 +2,13 @@ import os
 from pathlib import Path
 import shutil
 from PIL import Image
+import matplotlib.pyplot as plt
 import cv2
 import numpy as np
 #data_path = r"E:\style_exprGAN\CK+\Emotion"
 image_path = r"E:\style_exprGAN\CK+\cohn-kanade-images"
-neutral_path = r"E:\style_exprGAN\data\neutral"
-smile_path = r"E:\style_exprGAN\data\smile"
+# neutral_path = r"E:\style_exprGAN\data\neutral"
+# smile_path = r"E:\style_exprGAN\data\smile"
 # neutral_crop_path = r"E:\style_exprGAN\data\neutral_crop"
 # smile_crop_path = r"E:\style_exprGAN\data\smile_crop"
 
@@ -17,10 +18,17 @@ class Args(dict):
 
 args = {
     'image_size' : (128,128),
-    'neutral_crop_path' : r".\data\neutral_crop_128",
-    'smile_crop_path' : r".\data\smile_crop_128",
-    'neutral_path' : r"E:\style_exprGAN\data\neutral",
-    'smile_path' : r"E:\style_exprGAN\data\smile"
+    'neutral_crop_path' : r".\data\neutral_crop_64",
+    'smile_crop_path' : r".\data\smile_crop_64",
+    'neutral_path' : r"E:\style_exprGAN\data\neutral_crop_128",
+    'smile_path' : r"E:\style_exprGAN\data\smile_crop_128",
+    'neutral_landmark_path' : r"E:\style_exprGAN\data\neutral_feature_points",
+    'smile_landmark_path' : r"E:\style_exprGAN\data\smile_feature_points",
+    'neutral_align_path' : r"E:\style_exprGAN\data\neutral_align_128",
+    "smile_align_path" : r"E:\style_exprGAN\data\smile_align_128",
+    "neutral_crop_align_path" : r"E:\style_exprGAN\data\neutral_crop_align_128",
+    "smile_crop_align_path" : r"E:\style_exprGAN\data\smile_crop_align_128"
+    
 }
 args = Args(args)
 os.makedirs(args.neutral_crop_path, exist_ok=True)
@@ -65,8 +73,11 @@ def traverse_data_folder(data_path):
             if os.path.isdir(emotionalLabel_path):
                 process_subject_emotion_folder(emotionalLabel_path)
 
+
+
+
 def crop_image(input_folder, output_folder):
-    crop_box = (125, 25, 550, 442)
+    crop_box = (30, 30, 100, 100)
     for filename in os.listdir(input_folder):
         img_path = os.path.join(input_folder, filename)
         with Image.open(img_path) as img:
@@ -88,9 +99,45 @@ def crop_image(input_folder, output_folder):
             output_path = os.path.join(output_folder, filename)
             cropped_img_3ch.save(output_path)
 
+def align_image(input_folder, output_folder, landmark_path):    
+    for filename in os.listdir(input_folder):
+        img_path = os.path.join(input_folder, filename)
+        image_name, ext = os.path.splitext(filename)
+        image_landmark_path = os.path.join(landmark_path, 'landmark_'+image_name+'.npy')
+        img = cv2.imread(img_path) 
+        landmarks = np.load(image_landmark_path)
+        
+        
+
+        # 計算所有點的中心
+        center = np.mean(landmarks, axis=0).astype(np.int32)
+        
+        output_size = (128, 128)
+        img_center_x = output_size[0] // 2  # 320 (如果輸出大小是 640x480)
+        img_center_y = output_size[1] // 2  # 240
+
+        # 計算需要的平移量：圖片中心 - 當前位置
+        dx = img_center_x - center[0]  # 正值表示向右移，負值表示向左移
+        dy = img_center_y - center[1]  # 正值表示向下移，負值表示向上移
+
+        # 建立平移矩陣
+        M = np.float32([
+            [1, 0, dx],
+            [0, 1, dy]
+        ])
+        aligned = cv2.warpAffine(img, M, output_size)
+        aligned = Image.fromarray(aligned.astype('uint8'), mode='RGB')
+            # Save the 3-channel image
+        output_path = os.path.join(output_folder, filename)
+        aligned.save(output_path)
+
+
+    
 # 主程式執行
 # data_path = r"E:\style_exprGAN\CK+\Emotion"  # 設定你的資料夾路徑
 # traverse_data_folder(data_path)
 if __name__ == '__main__':
-    crop_image(neutral_path, args.neutral_crop_path)
-    crop_image(smile_path, args.smile_crop_path)
+    #align_image(args.neutral_path, args.neutral_align_path, args.neutral_landmark_path)
+    #align_image(args.smile_path, args.smile_align_path, args.smile_landmark_path)
+    crop_image(args.neutral_align_path, args.neutral_crop_align_path)
+    crop_image(args.smile_align_path, args.smile_crop_align_path)
