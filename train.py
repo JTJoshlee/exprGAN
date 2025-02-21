@@ -33,7 +33,7 @@ args = {
     'smile_path' : r".\data\smile_crop_align_128",
     'neutral_test_path' : r".\data\test_data\test_neutral128",
     'smile_test_path' : r".\data\test_data\test_smile128",   
-    'expression_path' : r".\model\expression_classifier\attention0.5",
+    'expression_path' : r".\model\expression_classifier_with_ID\attention0.5",
     'Id_classifier_path' : r".\model\with_ID\Id_classifier_model",
     'neutral_landmark_path' : r".\data\neutral_feature_points",
     'smile_landmark_path' : r".\data\smile_feature_points",
@@ -86,7 +86,7 @@ for train_index, valid_index in kfold.split(train_dataset):
                 
                 output_neutral, x_encoded = model_Enc(input_neutral)
                 output_smile, y_encoded = model_Enc(input_smile)                
-                output_Id = model_Id(x_encoded, y_encoded)                
+                output_Id = model_Id(input_neutral, input_smile)                
                 # loss_express = loss_expfn(output_neutral, 'neutral') + loss_expfn(output_smile, 'smile')
                 x_encoded_detached = x_encoded.detach()  # 創建新的張量，切斷梯度連接
                 y_encoded_detached = y_encoded.detach()               
@@ -103,14 +103,17 @@ for train_index, valid_index in kfold.split(train_dataset):
                 expression_total_loss = loss(output_neutral, output_smile, com_neutral, com_smile, attention_argument)
                 ID_classifierLoss = ID_loss(output_Id, batch['same_id'])
                 total_loss = ID_classifierLoss + expression_total_loss
+                wandb.log({"Id_loss": ID_classifierLoss.item(), "epoch": epoch})
                 wandb.log({"expression_loss": expression_total_loss.item(), "epoch": epoch})
             
                 opt_Enc.zero_grad()
+                opt_Id.zero_grad()
                 total_loss.backward()
                 #expression_total_loss.backward()
                 # expression_total_loss.backward(retain_graph=True)  # 保留计算图
                 # ID_classifierLoss.backward()
                 opt_Enc.step()
+                opt_Id.step()
                 # model_Id.train()
                 # output_Id = model_Id(x_encoded_detached, y_encoded_detached)
                 # ID_classifierLoss = ID_loss(output_Id, batch['same_id'])
@@ -135,9 +138,11 @@ for train_index, valid_index in kfold.split(train_dataset):
                 tepoch.set_postfix(loss=expression_total_loss.item())
                 
                 model_Enc.eval()
-                #model_Id.eval()
+                model_Id.eval()
             opt_Enc.zero_grad()
+            opt_Id.zero_grad()
             model_Enc.eval()
+            model_Id.eval()
             with torch.no_grad():
                 valid_total_loss = 0
                 totalID_loss = 0
@@ -148,6 +153,7 @@ for train_index, valid_index in kfold.split(train_dataset):
                     input_smile = batch['smile']
                     output_neutral, x_encoded = model_Enc(input_neutral)
                     output_smile, y_encoded = model_Enc(input_smile)
+                    output_Id = model_Id(input_neutral, input_smile) 
                     with torch.enable_grad():  # 启用梯度计算
                         com_neutral, com_smile = Grad_CAM(model_Enc, batch)
                     
@@ -164,18 +170,19 @@ for train_index, valid_index in kfold.split(train_dataset):
 
                     print(f"valid expression f1score {f1}")
                     wandb.log({"validation_f1_score": f1.item(), "epoch": epoch})
-                    output_Id = model_Id(x_encoded, y_encoded) 
+                     
                     probs = torch.sigmoid(output_Id) 
                 
-                    # predictions = (probs > 0.5).float()
-                    # same_id_f1 = f1_score(batch['same_id'].cpu().numpy(), predictions.cpu().numpy())
-                    # print(f"valid ID f1score {same_id_f1}")
+                    predictions = (probs > 0.5).float()
+                    same_id_f1 = f1_score(batch['same_id'].cpu().numpy(), predictions.cpu().numpy())
+                    wandb.log({"validationID_f1_score": f1.item(), "epoch": epoch})
+                    print(f"valid ID f1score {same_id_f1}")
                     valid_loss_express = loss(output_neutral, output_smile, com_neutral, com_smile, attention_argument)                     
-                    
+                    ID_classifierLoss = ID_loss(output_Id, batch['same_id'])
                     wandb.log({"validation loss express": valid_loss_express.item(), "epoch": epoch})
                     valid_total_loss += valid_loss_express
+                    totalID_loss += ID_classifierLoss
                     
-                    # ID_classifierLoss = ID_loss(output_Id, batch['same_id'])
                     
                     #totalID_loss += ID_classifierLoss
                     # complemtary_neutral, complemtary_smile = Grad_CAM(model_Enc, batch)      
@@ -183,8 +190,12 @@ for train_index, valid_index in kfold.split(train_dataset):
                 
                 valid_average_loss = valid_total_loss/len(valid_loader)           
                 scheduler_Enc.step(valid_average_loss)
+                valid_Id_loss = totalID_loss/len(valid_loader)
+                scheduler_Id.step(valid_Id_loss)
                 lr = opt_Enc.param_groups[0]['lr']
+                Id_lr = opt_Id.param_groups[0]['lr']
                 wandb.log({"lr": lr, "epoch": epoch})
+                wandb.log({"Id_lr": Id_lr, "epoch": epoch})
                 #totalID_loss = totalID_loss/(len(valid_loader))
                 
                 #scheduler_Id.step(totalID_loss)
@@ -195,6 +206,7 @@ for train_index, valid_index in kfold.split(train_dataset):
                     
                     output_smile, x_encoded = model_Enc(input_smile)
                     output_neutral, y_encoded = model_Enc(input_neutral)
+                    output_Id = model_Id(input_neutral, input_smile)
                     with torch.enable_grad():
                         com_neutral, com_smile = Grad_CAM(model_Enc, batch) 
                     _, predicted_smile = torch.max(output_smile, 1)
@@ -208,16 +220,20 @@ for train_index, valid_index in kfold.split(train_dataset):
 
                     # 计算 F1 Score
                     f1 = f1_score(labels_all.cpu().numpy(), predicted_all.cpu().numpy(), average='binary')
-                    # probabilities = torch.sigmoid(output_Id)
-                    #output_Id = model_Id(x_encoded, y_encoded) 
+                    probabilities = torch.sigmoid(output_Id)
+                    
                     probs = torch.sigmoid(output_Id) 
                 
                     predictions = (probs > 0.5).float()
                     test_loss_express = loss(output_neutral, output_smile, com_neutral, com_smile, attention_argument)
                     wandb.log({"test loss express": test_loss_express.item(), "epoch": epoch})
+                    ID_classifierLoss = ID_loss(output_Id, batch['same_id'])
                     # # 設定閾值為 0.5，轉為二進制標籤
                     # predicted_labels = (probabilities > 0.5).int()
                     same_id_f1 = f1_score(batch['same_id'].cpu().numpy(), predictions.cpu().numpy())
+                    wandb.log({"test ID express": ID_classifierLoss.item(), "epoch": epoch})
+                    wandb.log({"test ID F1": same_id_f1.item(), "epoch": epoch})
+                    
                     print(f"test expression f1score {f1}")
                     #print(f"test ID f1score {same_id_f1}")
                     #print(f"same Id {same_id_f1}")

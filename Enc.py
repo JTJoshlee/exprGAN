@@ -101,29 +101,33 @@ class EASNNetwork(nn.Module):
         return self.flatten_size
 
 class IdClassifier(nn.Module):
-    def __init__(self, conv_channels=64):
+    def __init__(self, input_channels=3, conv_channels=64):
         super(IdClassifier, self).__init__()
 
         
         self.encoder_ouput_dim = 256
-        
+        self.encoder = Encoder(input_channels)
         self.conv_bn_sigmoid = nn.Sequential(
             nn.Conv2d(self.encoder_ouput_dim, conv_channels, kernel_size=5, stride=2, padding=2),
             nn.BatchNorm2d(conv_channels),            
             nn.Sigmoid()            
         )
-    
+        #features = self.conv_bn_sigmoid(xy_abs) 
         self.flatten_size = EASNNetwork().get_flatten_size()
-        self.fc1 = nn.Linear(self.flatten_size, 256)
+        self.fc1 = nn.Linear(256, 256)
         self.fc2 = nn.Linear(256, 64)
         self.fc3 = nn.Linear(64, 1)
         
-    def forward(self, x, y):        
+    def forward(self, x_image, y_image):
+        x = self.encoder(x_image)
+        y = self.encoder(y_image)        
         xy_abs = torch.abs(x-y)
+        
         features = self.conv_bn_sigmoid(xy_abs)               
-        self.flatten_size = features.shape[1] * features.shape[2] * features.shape[3]
-        self.fc1 = nn.Linear(self.flatten_size, 256).to(features.device)
+        #flatten_size = features.shape[1] * features.shape[2] * features.shape[3]
+        #self.fc1 = nn.Linear(self.flatten_size, 256).to(features.device)
         flattened = features.view(features.size(0), -1)
+        
         out = self.fc1(flattened)
         out = self.fc2(out)
         out = self.fc3(out)

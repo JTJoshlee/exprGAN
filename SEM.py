@@ -24,8 +24,8 @@ class SEM():
         # else:
         #     print("data dimension error")
        #data = np.array(data, dtype=np.uint8)
-        plt.figure("data")
-        plt.imshow(data)
+        # plt.figure("data")
+        # plt.imshow(data)
         
 
         return data
@@ -44,9 +44,9 @@ class SEM():
         semantic_binary = np.bitwise_or(x_grad, y_grad)
         
         print("semantic binary", semantic_binary.shape)
-        plt.figure("semantic_binary")
-        plt.imshow(semantic_binary)
-        plt.show()
+        # plt.figure("semantic_binary")
+        # plt.imshow(semantic_binary)
+        # plt.show()
         
         return semantic_binary
 
@@ -183,9 +183,9 @@ class style_map():
         #files = os.listdir(self.result_path)
         maps = self.and_two_maps(semantic_map, appearance_map)
         
-        plt.figure('and map')
-        plt.imshow(maps)
-        plt.show()
+        # plt.figure('and map')
+        # plt.imshow(maps)
+        # plt.show()
         maps = (maps - maps.min()) / (maps.max() - maps.min()) * 255  # 標準化到 0-255
         maps = maps.astype(np.uint8)
         image = Image.fromarray(maps)

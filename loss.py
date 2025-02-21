@@ -43,7 +43,8 @@ class IdClassifyLoss(nn.Module):
     def forward(self, abs_id, target):            
         
         output = abs_id
-        target_tensor = target       
+        target_tensor = target
+             
         output = self.entropy(output, target_tensor)
         
         return output
