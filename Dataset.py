@@ -106,7 +106,7 @@ class Dataset(Dataset):
     
     def __len__(self):
         
-        return len(self.neutral_images)
+        return 2*len(self.neutral_images)
 
 
 

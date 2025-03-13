@@ -9,6 +9,8 @@ import cv2
 import torch
 from scipy.spatial import Delaunay
 import glob
+from Dataset import Dataset as Ds
+import yaml
 
 class SEM():
     def __init__(self):
@@ -43,7 +45,7 @@ class SEM():
         
         semantic_binary = np.bitwise_or(x_grad, y_grad)
         
-        print("semantic binary", semantic_binary.shape)
+        # print("semantic binary", semantic_binary.shape)
         # plt.figure("semantic_binary")
         # plt.imshow(semantic_binary)
         # plt.show()
@@ -125,7 +127,11 @@ class Appearance():
     def align_source_landmarks(self, neutral_path, source_landmarks, smile_path, target_landmarks, thereshold=25, alpha=0.7, smooth_radius=10):
         source_image = self.dataProcess(neutral_path)
         target_image = self.dataProcess(smile_path)
-
+        # source_image = neutral_path
+        # target_image = smile_path
+        # source_image = source_image.permute(1, 2, 0).cpu().numpy()
+        # target_image = target_image.permute(1, 2, 0).cpu().numpy()
+        # #print(source_image.shape)
         img = source_image.copy()
         
         tri = Delaunay(source_landmarks)
@@ -143,7 +149,7 @@ class Appearance():
         result_mask = source_image * (1 - smooth_mask[:,:,np.newaxis]) + img * smooth_mask[:,:,np.newaxis]
         result_mask = np.uint8(result_mask)
         result = img
-        result = np.uint8(result)
+        wrap_result = np.uint8(result)
         
         target_image = np.uint8(target_image)
         abs_diff = np.abs(np.int16(result) - np.int16(target_image))
@@ -162,11 +168,11 @@ class Appearance():
 
         
         
-        return result, M_appearance
+        return wrap_result, M_appearance
     
 class style_map():
     def __init__(self):
-        self.result_path = r"E:\style_exprGAN\data\appearance_map"
+        self.result_path = r"E:\style_exprGAN\data\kmeans_appearance_map"
         self.resize = (128,128)
     
 
@@ -206,24 +212,27 @@ if __name__ == "__main__":
     smile_file = r"E:\style_exprGAN\data\smile_crop_align_128"
     neutral_landmark_file = r"E:\style_exprGAN\data\neutral_feature_points"
     smile_landmark_file = r"E:\style_exprGAN\data\smile_feature_points"
-    idx = 0
-    for image in os.listdir(neutral_file):
-        neutral_image_name = os.path.splitext(image)[0]
-        neutral_image_path = os.path.join(neutral_file, image)        
-        smile_image = os.listdir(smile_file)
-        smile_image_name = os.path.basename(smile_image[idx])
-        
-        smile_image_name = os.path.splitext(smile_image_name)[0]        
-        neutral_gradCAM_image = os.path.join(neutral_gradCAM,f'graycam_neutral_{neutral_image_name}.png.jpg')
-        smile_gradCAM_image = os.path.join(smile_gradCAM,f'graycam_smile_{smile_image_name}.png.jpg')
-        semantic_map = Semantic.semantic_or(neutral_gradCAM_image,smile_gradCAM_image)
-        neutral_landmark = os.path.join(neutral_landmark_file,f'landmark_{neutral_image_name}.npy')
-        smile_landmark = os.path.join(smile_landmark_file,f'landmark_{smile_image_name}.npy')
-        
+    
+    dataset = Ds(neutral_file, smile_file)
+    print(len(dataset))
+    kmeans_map_dict = {}
+    for i in range(len(dataset)):
+        neutral_image = dataset[i]['neutral']
+        smile_image = dataset[i]['smile']
+        neutral_name = dataset[i]['neutral_name'].split(".")[0]
+        smile_name = dataset[i]['smile_name'].split(".")[0]
+        neutral_landmark = os.path.join(neutral_landmark_file,f'landmark_{neutral_name}.npy')
+        smile_landmark = os.path.join(smile_landmark_file,f'landmark_{smile_name}.npy')
         neutral_landmark_np = np.load(neutral_landmark)
         smile_landmark_np = np.load(smile_landmark)
-        smile_image_path = os.path.join(smile_file, smile_image[idx])
-        result, appearance_map = appearance.align_source_landmarks(neutral_image_path, neutral_landmark_np, smile_image_path, smile_landmark_np, thereshold=30)
+        neutral_image_path = os.path.join(neutral_file, f'{neutral_name}.png')
+        smile_image_path = os.path.join(smile_file, f'{smile_name}.png')
+        neutral_gradCAM_image = os.path.join(neutral_gradCAM,f'graycam_neutral_{neutral_name}.png.jpg')
+        smile_gradCAM_image = os.path.join(smile_gradCAM,f'graycam_smile_{smile_name}.png.jpg')
+        semantic_map = Semantic.semantic_or(neutral_gradCAM_image,smile_gradCAM_image)
+        wrap_result, appearance_map = appearance.align_source_landmarks(neutral_image_path, neutral_landmark_np, smile_image_path, smile_landmark_np, thereshold=10)
+        kmeans_map_dict[f"attentionMap{i}"] = [neutral_name, smile_name]
+        
         # plt.figure('semantic map')
         # plt.imshow(semantic_map, cmap='gray')
         
@@ -232,11 +241,39 @@ if __name__ == "__main__":
         # plt.imshow(appearance_map, cmap='gray')
         
         # plt.show()
+        Map.save_smileMaps(appearance_map, semantic_map, f"attentionMap{i}")
+    with open("data.yaml", "w") as yaml_file:
+        yaml.dump(kmeans_map_dict, yaml_file)
+    # for image in os.listdir(neutral_file):
+    #     neutral_image_name = os.path.splitext(image)[0]
+    #     neutral_image_path = os.path.join(neutral_file, image)        
+    #     smile_image = os.listdir(smile_file)
+    #     smile_image_name = os.path.basename(smile_image[idx])
+        
+    #     smile_image_name = os.path.splitext(smile_image_name)[0]        
+    #     neutral_gradCAM_image = os.path.join(neutral_gradCAM,f'graycam_neutral_{neutral_image_name}.png.jpg')
+    #     smile_gradCAM_image = os.path.join(smile_gradCAM,f'graycam_smile_{smile_image_name}.png.jpg')
+    #     semantic_map = Semantic.semantic_or(neutral_gradCAM_image,smile_gradCAM_image)
+    #     neutral_landmark = os.path.join(neutral_landmark_file,f'landmark_{neutral_image_name}.npy')
+    #     smile_landmark = os.path.join(smile_landmark_file,f'landmark_{smile_image_name}.npy')
+        
+    #     neutral_landmark_np = np.load(neutral_landmark)
+    #     smile_landmark_np = np.load(smile_landmark)
+    #     smile_image_path = os.path.join(smile_file, smile_image[idx])
+    #     result, appearance_map = appearance.align_source_landmarks(neutral_image_path, neutral_landmark_np, smile_image_path, smile_landmark_np, thereshold=30)
+    #     # plt.figure('semantic map')
+    #     # plt.imshow(semantic_map, cmap='gray')
+        
+        
+    #     # plt.figure('appearance map')
+    #     # plt.imshow(appearance_map, cmap='gray')
+        
+    #     # plt.show()
     
 
-        Map.save_smileMaps(appearance_map, semantic_map, smile_image_name)
+    #     Map.save_smileMaps(appearance_map, semantic_map, smile_image_name)
         
-        idx += 1
+    #     idx += 1
     # semantic_map = Semantic.semantic_or(neutral_gradCAM, smile_gradCAM)
     
 

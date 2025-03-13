@@ -168,7 +168,8 @@ def image_path_to_tensor(
 def find_image(data_root, target_name, extensions):
     for ext in extensions:
         for path in Path(data_root).rglob(f"*.{ext}"):  # 遞迴搜尋所有副檔名符合的檔案
-            if target_name in path.stem:  # 檢查名稱
+            if target_name.lower() in path.stem.lower():  # 檢查名稱
+                print(path)
                 return path  # 找到就回傳
     return None
 
@@ -221,10 +222,12 @@ def get_dataset_from_dataroot(
         # check image size and ignore images with 0 byte.
         if os.path.getsize(image_path) == 0:
             continue
+        if "attention" in image_path.stem.lower():
+            continue 
         image_name = os.path.basename(image_path)
         image_name = os.path.splitext(image_name)[0]
         
-        cond_image_path = find_image(image_path, cond_image_target_name, extensions)
+        cond_image_path = find_image(image_path.parent, cond_image_target_name, extensions)
         #cond_image_path = os.path.join(cond_image_root, f"{image_name}.png")
         
         if os.path.exists(str(cond_image_path)):
@@ -232,7 +235,7 @@ def get_dataset_from_dataroot(
 
         image_path = str(image_path)
         data_dict[image_column].append(image_path)
-        data_dict[cond_image_column].append(cond_image_path)
+        data_dict[cond_image_column].append(str(cond_image_path))
     dataset = datasets.Dataset.from_dict(data_dict)
     dataset = dataset.cast_column(image_column, Image())
     dataset = dataset.cast_column(cond_image_column, Image())

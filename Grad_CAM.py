@@ -12,6 +12,7 @@ import os
 from torch.utils.data import random_split, DataLoader, Subset
 from sklearn.model_selection import KFold
 from Dataset import Dataset as Ds
+import torchvision.transforms as T
 class Args(dict):
         __setattr__ = dict.__setitem__
         __getattr__ = dict.__getitem__
@@ -146,9 +147,9 @@ def complementary_img(Mcam_img, input_img):
     Mcam_img_tensor = torch.tensor(Mcam_img).to('cuda')
     input_img_tensor = input_img.clone().detach()
 
-    alpha = 10.0
-    beta = 0.5
-    
+    alpha = 2.0
+    beta = 0.4
+    #print(Mcam_img_tensor.max())
     delta = torch.sigmoid(alpha * (Mcam_img_tensor - beta))
     if torch.isnan(delta).any():
         print("NaN detected in delta")
@@ -156,13 +157,23 @@ def complementary_img(Mcam_img, input_img):
     complement_mask = 1 - delta
     if torch.isnan(complement_mask).any():
         print("NaN detected in complement_mask")
-
+    
+    complement_mask = complement_mask.repeat(3, 1, 1)
+    
     mask_image = input_img_tensor * complement_mask
+    # print(delta.min().item(), delta.max().item())
+    # print(input_img_tensor)
+    # print(mask_image)
     if torch.isnan(mask_image).any():
         print("NaN detected in x_bar_j")
-    
+    input_img_tensor = input_img_tensor.detach().cpu().numpy()
     mask_image = mask_image.detach().cpu().numpy()
-    
+    #mask_image.permute(1,2,0)
+    # plt.figure("input image")
+    # plt.imshow(input_img_tensor.transpose(1,2,0))
+    # plt.figure("mask image")
+    # plt.imshow(mask_image.transpose(1,2,0))
+    # plt.show()
     return  mask_image
 
 
@@ -180,7 +191,7 @@ if __name__ == "__main__":
     
     
     
-    state_dict = torch.load(r'E:\style_exprGAN\model\expression_classifier_epoch2500.pth')
+    state_dict = torch.load(r'E:\style_exprGAN\model\well_model\expression_epoch2000.pth')
     model_Enc = EASNNetwork().to("cuda")
     model_Enc.load_state_dict(state_dict)
     model_Enc.eval()
@@ -189,6 +200,7 @@ if __name__ == "__main__":
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
     for batch in train_loader:
         com_neutral, com_smile = Grad_CAM(model_Enc, batch)
+
 # 顯示互補圖像
    
 

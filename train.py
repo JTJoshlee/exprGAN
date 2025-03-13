@@ -28,13 +28,13 @@ class Args(dict):
 args = {
     'device' : 'cuda',
     'batch_size' : int(8),
-    'epoch' : 10000,
+    'epoch' : 8000,
     'neutral_path' : r".\data\neutral_crop_align_128",
     'smile_path' : r".\data\smile_crop_align_128",
     'neutral_test_path' : r".\data\test_data\test_neutral128",
     'smile_test_path' : r".\data\test_data\test_smile128",   
-    'expression_path' : r".\model\expression_classifier_with_ID\attention0.5",
-    'Id_classifier_path' : r".\model\with_ID\Id_classifier_model",
+    'expression_path' : r".\model\expression_classifier_with_ID\expression",
+    'Id_classifier_path' : r".\model\expression_classifier_with_ID\ID",
     'neutral_landmark_path' : r".\data\neutral_feature_points",
     'smile_landmark_path' : r".\data\smile_feature_points",
 }
@@ -54,9 +54,9 @@ loss = Expression_Loss(args)
 opt_Enc = torch.optim.Adam(model_Enc.parameters(), lr=0.001, weight_decay=0.01)
 opt_Id =  torch.optim.Adam(model_Id.parameters(), lr=0.001)
 
-scheduler_Enc = ReduceLROnPlateau(opt_Enc, mode='min', factor=0.8, patience=8, min_lr=1e-6, cooldown=3, threshold=1e-4)
+scheduler_Enc = ReduceLROnPlateau(opt_Enc, mode='min', factor=0.8, patience=8, min_lr=1e-8, cooldown=3, threshold=1e-4)
 #opt_Id = torch.optim.RAdam(model_Id.parameters(), lr=0.001)
-scheduler_Id = ReduceLROnPlateau(opt_Id, mode='min', factor=0.5, patience=5, min_lr=1e-6)
+scheduler_Id = ReduceLROnPlateau(opt_Id, mode='min', factor=0.5, patience=5, min_lr=1e-8)
 #params = list(model_Enc.parameters()) + list(model_Id.parameters())
 #opt = torch.optim.RAdam(params,lr=0.001)
 labels_neutral = torch.zeros(args.batch_size, dtype=torch.long, device=args.device)
@@ -169,17 +169,18 @@ for train_index, valid_index in kfold.split(train_dataset):
                     f1 = f1_score(labels_all.cpu().numpy(), predicted_all.cpu().numpy(), average='binary')
 
                     print(f"valid expression f1score {f1}")
-                    wandb.log({"validation_f1_score": f1.item(), "epoch": epoch})
+                    #wandb.log({"validation_f1_score": f1.item(), "epoch": epoch})
                      
                     probs = torch.sigmoid(output_Id) 
                 
                     predictions = (probs > 0.5).float()
                     same_id_f1 = f1_score(batch['same_id'].cpu().numpy(), predictions.cpu().numpy())
-                    wandb.log({"validationID_f1_score": f1.item(), "epoch": epoch})
+                    wandb.log({"validationID_f1_score": same_id_f1.item(), "epoch": epoch})
                     print(f"valid ID f1score {same_id_f1}")
                     valid_loss_express = loss(output_neutral, output_smile, com_neutral, com_smile, attention_argument)                     
                     ID_classifierLoss = ID_loss(output_Id, batch['same_id'])
                     wandb.log({"validation loss express": valid_loss_express.item(), "epoch": epoch})
+                    wandb.log({"validation loss ID": ID_classifierLoss.item(), "epoch": epoch})
                     valid_total_loss += valid_loss_express
                     totalID_loss += ID_classifierLoss
                     
@@ -227,6 +228,7 @@ for train_index, valid_index in kfold.split(train_dataset):
                     predictions = (probs > 0.5).float()
                     test_loss_express = loss(output_neutral, output_smile, com_neutral, com_smile, attention_argument)
                     wandb.log({"test loss express": test_loss_express.item(), "epoch": epoch})
+                    wandb.log({"test f1score express": f1.item(), "epoch": epoch})
                     ID_classifierLoss = ID_loss(output_Id, batch['same_id'])
                     # # 設定閾值為 0.5，轉為二進制標籤
                     # predicted_labels = (probabilities > 0.5).int()
@@ -242,7 +244,7 @@ for train_index, valid_index in kfold.split(train_dataset):
             #complemtary_neutral, complemtart_smile = Grad_CAM(model_Enc, batch)
         if epoch % 500 == 0:
             torch.save(model_Enc.state_dict(), f"{args.expression_path}_epoch{epoch}.pth")
-            #torch.save(model_Id.state_dict(), f"{args.Id_classifier_path}_epoch{epoch}.pth")
+            torch.save(model_Id.state_dict(), f"{args.Id_classifier_path}_epoch{epoch}.pth")
             print(f"successful save model")
 
  

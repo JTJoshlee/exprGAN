@@ -115,13 +115,13 @@ class Arguments:
     dataset_name: Optional[str] = None
     hf_split_name: Optional[str] = None
     streaming: bool = False
-    train_data_dir: Optional[str] = r"E:\style_exprGAN\data\smile_crop_128"
+    train_data_dir: Optional[str] = r"E:\style_exprGAN\data\smile_data"
     cond_image_dir: Optional[str] = r"E:\style_exprGAN\data\appearance_map"
     checkpoint_limit: Union[int, str] = None
     cond_drop_prob: float = 0.5
     scheduler_power: float = 1.0
     num_cycles: int = 1
-    resume_path: Optional[str] = r"E:\style_exprGAN\image128_results\maskgit_superres.476900.pt"
+    resume_path: Optional[str] = None
     taming_model_path: Optional[str] = None
     taming_config_path: Optional[str] = None
     weight_decay: float = 0.0

@@ -27,8 +27,9 @@ args = {
     'neutral_align_path' : r"E:\style_exprGAN\data\neutral_align_128",
     "smile_align_path" : r"E:\style_exprGAN\data\smile_align_128",
     "neutral_crop_align_path" : r"E:\style_exprGAN\data\neutral_crop_align_128",
-    "smile_crop_align_path" : r"E:\style_exprGAN\data\smile_crop_align_128"
-    
+    "smile_crop_align_path" : r"E:\style_exprGAN\data\smile_crop_align_128",
+    "neutral_equalize_brightness" : r"E:\style_exprGAN\data\neutral_equalize_brightness",
+    "smile_equalize_brightness" : r"E:\style_exprGAN\data\smile_equalize_brigthness"
 }
 args = Args(args)
 os.makedirs(args.neutral_crop_path, exist_ok=True)
@@ -132,6 +133,54 @@ def align_image(input_folder, output_folder, landmark_path):
         aligned.save(output_path)
 
 
+def compute_average_brightness(image_folder):
+    """計算資料集的平均亮度"""
+    brightness_values = []
+    
+    for filename in os.listdir(image_folder):
+        img_path = os.path.join(image_folder, filename)
+        img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)  # 轉為灰階
+
+        if img is None:
+            continue  # 跳過無法讀取的圖片
+
+        brightness = np.mean(img)  # 計算亮度
+        brightness_values.append(brightness)
+
+    return np.mean(brightness_values)
+
+
+def equalized_birghtness(input_folder, output_folder, target_brightness=None):
+    inv_gamma = 1.0 / 1.8
+    
+    if target_brightness is None:
+        target_brightness = compute_average_brightness(input_folder)
+    for filename in os.listdir(input_folder):
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        img_path = os.path.join(input_folder, filename)
+        img = cv2.imread(img_path)
+        img_yuv = cv2.cvtColor(img, cv2.COLOR_BGR2YUV)
+        y_channel = img_yuv[:, :, 0]
+
+        # 計算當前圖片的亮度
+        current_brightness = np.mean(y_channel)
+
+        # 計算亮度調整係數
+        scale = target_brightness / (current_brightness + 1e-6)  # 避免除以 0
+
+        # 限制調整範圍，避免過度增強或降低亮度
+        scale = np.clip(scale, 0.5, 2.0)
+
+        # 調整亮度
+        y_channel = np.clip(y_channel * scale, 0, 255).astype(np.uint8)
+
+        # 合併回 YUV 並轉回 BGR
+        img_yuv[:, :, 0] = y_channel
+        normalized_img = cv2.cvtColor(img_yuv, cv2.COLOR_YUV2BGR)
+
+        # 保存圖片
+        output_path = os.path.join(output_folder, filename)
+        cv2.imwrite(output_path, normalized_img)
     
 # 主程式執行
 # data_path = r"E:\style_exprGAN\CK+\Emotion"  # 設定你的資料夾路徑
@@ -139,5 +188,7 @@ def align_image(input_folder, output_folder, landmark_path):
 if __name__ == '__main__':
     #align_image(args.neutral_path, args.neutral_align_path, args.neutral_landmark_path)
     #align_image(args.smile_path, args.smile_align_path, args.smile_landmark_path)
-    crop_image(args.neutral_align_path, args.neutral_crop_align_path)
-    crop_image(args.smile_align_path, args.smile_crop_align_path)
+    #crop_image(args.neutral_align_path, args.neutral_crop_align_path)
+    #crop_image(args.smile_align_path, args.smile_crop_align_path)
+    equalized_birghtness(args.neutral_crop_align_path, args.neutral_equalize_brightness)
+    equalized_birghtness(args.smile_crop_align_path, args.smile_equalize_brightness)
