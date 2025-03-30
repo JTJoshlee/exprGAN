@@ -2,7 +2,7 @@ import os
 from PIL import Image
 import matplotlib.pyplot as plt
 import numpy as np
-
+import time
 import argparse
 import math
 from functools import partial
@@ -21,11 +21,13 @@ from torch import einsum, isnan, nn
 from tqdm.auto import tqdm
 from transformers import T5EncoderModel, T5Tokenizer
 import cv2
+import wandb
 from muse_maskgit_pytorch.attn import ein_attn, sdp_attn
 #from muse_maskgit_pytorch.t5 import DEFAULT_T5_NAME, get_encoded_dim, get_model_and_tokenizer, t5_encode_text
 from muse_maskgit_pytorch.vqgan_vae import VQGanVAE
+from muse_maskgit_pytorch.vqgan_vae import ResnetEncDec
 from muse_maskgit_pytorch.vqgan_vae_taming import VQGanVAETaming
-
+from loss import IdClassifyLoss
 try:
     from muse_maskgit_pytorch.attn import xformers_attn
 
@@ -45,6 +47,12 @@ from My_Maskgit_dataset import (
 from torchvision.utils import make_grid
 from torchvision.utils import save_image
 from Enc import EASNNetwork, IdClassifier
+from Dlib import Dlib
+from warp import Warp
+from Enc import IdClassifier
+
+
+
 def exists(val):
     return val is not None
 
@@ -179,8 +187,10 @@ class Transformer(nn.Module):
         attentionMap_embeds: Optional[torch.Tensor] = None,
         self_cond_embed=None,
         conditioning_token_ids: Optional[torch.Tensor] = None,
-        labels=None,
+        labels=None,        
         ignore_index=0,
+        y_points: Optional[torch.Tensor] = None,
+        y_points_label: Optional[torch.Tensor] = None,
         cond_drop_prob=0.0,
 
     ):
@@ -209,7 +219,7 @@ class Transformer(nn.Module):
 
         embed = self.transformer_blocks(x, context=context, context_mask=context_mask)
         logits = self.to_logits(embed)
-
+        
         if return_embed:
             return logits, embed
         
@@ -224,7 +234,7 @@ class Transformer(nn.Module):
         if not return_logits:
             return loss
         
-        return loss, logits
+        return loss, logits, embed
     
 
 
@@ -304,7 +314,10 @@ def cosine_schedule(t):
     return torch.cos(t * math.pi * 0.5)
 
 def polynomial_schedule(t, power=2):
-    return t**power    
+    return t**power
+
+# class Landmark_points_decode(nn.Module):
+
 #main maskgit classes
 @beartype
 class MaskGit(nn.Module):
@@ -312,6 +325,7 @@ class MaskGit(nn.Module):
         self,
         image_size,   
         transformer: MaskGitTransformer,
+        Id_classifier: IdClassifier,
         #Encoder : EASNNetwork,
         #ID_Classifier : IdClassifier,
         token_critic: Optional[TokenCritic] = None,
@@ -323,7 +337,16 @@ class MaskGit(nn.Module):
         self_cond_prob: float = 0.9,
         no_mask_token_prob: float = 0.0,
         critic_loss_weight: float=0.3,
+        ###待做加入loss
+        landmark_loss_weight: float = 0.01,
+        warp_loss_weight: float = 1,
+        dlib_loss_weight: float = 0.01,
+        ID_loss: float = 1,
         cond_vae: Optional[Union[VQGanVAE, VQGanVAETaming]] = None,
+        dim: int = 48,
+        channels: int=3,
+        y_point_decoder_layer: int=2,
+        y_point_vae: Optional[Union[VQGanVAE, VQGanVAETaming]] = None, 
         
     ):
         super().__init__()
@@ -331,7 +354,7 @@ class MaskGit(nn.Module):
 
 
         self.vae = vae.copy_for_eval() if vae is not None else None
-
+        self.y_point_vae = y_point_vae
 
         if cond_vae is not None:
             if cond_image_size is None:
@@ -345,6 +368,10 @@ class MaskGit(nn.Module):
             raise ValueError("cannot have both self_token_critic and token_critic")
         self.token_critic = SelfCritic(transformer) if self_token_critic else token_critic
         self.critic_loss_weight = critic_loss_weight
+        self.landmark_loss_weight = landmark_loss_weight
+        self.warp_loss_weight = warp_loss_weight
+        self.dlib_loss_weight = dlib_loss_weight
+        self.ID_loss = ID_loss
         self.image_size = image_size
         self.mask_id = transformer.mask_id
         self.noise_schedule = noise_schedule        
@@ -355,6 +382,32 @@ class MaskGit(nn.Module):
         self.cond_drop_prob = cond_drop_prob
         self.self_cond_prob = self_cond_prob
         self.no_mask_token_prob = no_mask_token_prob
+        self.GetLandmark = Dlib()
+        self.warp = Warp()
+        self.ID_classifier = Id_classifier
+        self.ID_loss_fn = IdClassifyLoss()
+        self.RecnetEncDec = ResnetEncDec(dim=dim, channels=channels, layers=y_point_decoder_layer)
+        self.y_point_input_size = image_size**2
+        ###通道轉換層###
+        self.channel_adapter = nn.Conv2d(
+            in_channels=256, 
+            out_channels=96, 
+            kernel_size=1
+        )
+        self.y_point_decode = nn.Sequential(
+            
+            nn.Flatten(),  
+            nn.Linear(12288 , 68 * 2)
+        )
+        # self.y_point_decode = nn.Sequential(
+        #     nn.Linear(256 * 48, 2048),
+        #     nn.LeakyReLU(),
+        #     nn.Linear(2048, 1024),
+        #     nn.LeakyReLU(),
+        #     nn.Linear(1024, 512),
+        #     nn.LeakyReLU(),
+        #     nn.Linear(512, 68 * 2)
+        # )
         
 
     @property
@@ -388,6 +441,8 @@ class MaskGit(nn.Module):
         self,
         neutral_image: Optional[torch.Tensor] = None,
         cond_image: Optional[torch.Tensor] = None,
+        # neutral_landmark: Optional[torch.Tensor] = None,
+        # smile_landmark: Optional[torch.Tensor] = None,
         base_image: Optional[torch.Tensor] = None,
         fmap_size=None,
         timesteps=18,
@@ -401,10 +456,13 @@ class MaskGit(nn.Module):
         
         fmap_size = default(fmap_size, self.vae.get_encoded_fmap_size(self.image_size))
         self.cond_image_size = (fmap_size, fmap_size)
+        if neutral_image.shape[3] == 64:
+            self.codebook_size = 2048
+        else: self.codebook_size = 4096
         #begin with neutral image
 
         device = next(self.parameters()).device
-        
+        print("device",device)
         batch_size = len(neutral_image)
         seq_len = fmap_size**2 
         shape = (batch_size, seq_len)
@@ -417,6 +475,7 @@ class MaskGit(nn.Module):
         # neutral_image = neutral_image * mask
         
         _, ids, _ = self.vae.encode(neutral_image)
+        #print("ids max", ids.max())
         ids = rearrange(ids, "b ... -> b (...)")
 
         cond_images = F.interpolate(cond_image, self.cond_image_size, mode="nearest")
@@ -462,8 +521,7 @@ class MaskGit(nn.Module):
             rand_mask_prob = self.noise_schedule(timestep)
             num_token_masked = max(int((rand_mask_prob * seq_len).item()), 1)
 
-            masked_indices = scores.topk(num_token_masked, dim=-1).indices
-            
+            masked_indices = scores.topk(num_token_masked, dim=-1).indices          
             
            
             ids = ids.scatter(1, masked_indices, self.mask_id)
@@ -512,12 +570,15 @@ class MaskGit(nn.Module):
                             self.no_mask_token_prob > 0.0
                         ), "without training with some of the non-masked tokens forced to predict, not sure if the logits will be meaningful for these token"
 
-          
+        #_, ids, _ = self.vae.encode(neutral_image)  
         ids = rearrange(ids, "b (i j) -> b i j", i=fmap_size, j=fmap_size)
 
         if not exists(self.vae):
             return ids
-
+        
+        #print(ids.max(), ids.min())  # 檢查 ids 中的最大值和最小值
+        if ids.max() > self.codebook_size:
+            return None
         images = self.vae.decode_from_ids(ids)
         
         return images
@@ -527,6 +588,8 @@ class MaskGit(nn.Module):
         smile_image: torch.Tensor,
         neutral_image: torch.Tensor,
         cond_image: torch.Tensor,
+        neutral_landmark:torch.Tensor,
+        smile_landmark:torch.Tensor,
         base_image: Optional[torch.Tensor] = None,
         cond_token_ids: Optional[torch.Tensor] = None,
         ignore_index=-1,
@@ -534,8 +597,15 @@ class MaskGit(nn.Module):
         sample_temperature=None,
         cond_drop_prob=None,
         fmap_size=None,
+        timesteps=18,
+        topk_filter_thres=0.67,
+        starting_temperature=1.0,
+        can_remask_prev_masked=False,
+        cond_scale=3,
 
     ):
+        #print(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+        #print(neutral_image.shape[3])
         fmap_size = default(fmap_size, self.vae.get_encoded_fmap_size(self.image_size))
         self.cond_image_size = (fmap_size, fmap_size)
         if neutral_image.dtype == torch.float:
@@ -565,6 +635,7 @@ class MaskGit(nn.Module):
         else:
             
             smile_ids = smile_image
+        
         if base_image is not None:
             _, base_ids, _ = self.vae.encode(base_image)
             base_ids = rearrange(base_ids, "b ... -> b (...)")
@@ -578,6 +649,7 @@ class MaskGit(nn.Module):
             smile_ids.device,
             default(cond_drop_prob, self.cond_drop_prob),
         )
+        shape = (batch, seq_len)
         #調整image size
         if self.resize_image_for_cond_image:
             cond_images = F.interpolate(cond_image, self.cond_image_size, mode="nearest")
@@ -644,24 +716,144 @@ class MaskGit(nn.Module):
                 self_cond_embed.detach_()
 
         #get loss
+        if neutral_image.shape[3] == int(64):
+            smile_landmark = smile_landmark/2
 
-        ce_loss, logits = self.transformer(
+
+        ce_loss, logits, embed = self.transformer(
             x,
             self_cond_embed=self_cond_embed,
             conditioning_token_ids=cond_token_ids,
             labels=labels,
             cond_drop_prob=cond_drop_prob,
             ignore_index=ignore_index,
+            
             return_logits=True,
         )
 
+
+        
+
+    ### y^points 預測 landmark loss
+        if neutral_image.shape[3] == int(64):
+            smile_landmark = smile_landmark/2
+            neutral_landmark = neutral_landmark/2
+        
+        
+        pred_ids = gumbel_sample(logits, dim=-1)    
+        
+        pred_ids = rearrange(pred_ids, "b (i j) -> b i j", i=fmap_size, j=fmap_size)
+        y_points_decode_logits = self.y_point_vae.decode_from_ids(pred_ids)
+        y_points_output = self.y_point_decode(y_points_decode_logits)
+        y_points_output = y_points_output.view(-1, 68, 2)       
+        #y_points_output = y_points_output.view(x.size(0), 68, 2)
+        
+        
+        landmark_loss = F.mse_loss(y_points_output, smile_landmark)
+              
+        
+
+        #generate_image = self.vae.decode_from_ids(pred_ids)
+        #print("generate ids", generate_ids.shape)
+    ### dlib loss
+        ##########################
+        # #start_time = time.time()
+        generate_image = self.generate(
+            neutral_image=neutral_image,
+            cond_image=cond_image,
+            # neutral_landmark=neutral_landmark,
+            # smile_landmark=smile_landmark,
+            base_image=base_image,
+            timesteps=8,
+        )
+        # #end_time = time.time()
+
+        # #execution_time = end_time - start_time
+
+        # #print(f"產生image時間: {execution_time} 秒")
+        ########################
+        # dlib_loss = 100
+        # warp_loss = 0
+        # ID_loss = 0
+        ##測試用
+       
+        if generate_image is None:
+            generate_image = neutral_image
+            print("use generate image")
+        # print(generate_image.shape)
+        # print(smile_landmark.type)
+        # print(smile_landmark.shape)
+        ####
+        #ce_loss = F.l1_loss(generate_image, smile_image)
+        ########################    
+        #start_time = time.time()
+        y_global_landmark = self.GetLandmark.input_image(generate_image)
+        if y_global_landmark is None:
+            y_global_landmark = neutral_landmark
+            print("use neutral_landmark")
+        # print("y_global_landmark",y_global_landmark)
+        # print("neutral landmark", neutral_landmark)
+        #y_global_landmark = y_global_landmark.detach().requires_grad_(True)
+        dlib_loss = F.mse_loss(y_global_landmark, smile_landmark)  
+        #end_time = time.time()
+
+        #execution_time = end_time - start_time
+
+        #print(f"landmark時間: {execution_time} 秒")  
+        #################################
+### warp loss
+        #print("neutral landmark", neutral_landmark)
+        #start_time = time.time()
+        y_global_warp = self.warp.get_warp_image(smile_image, y_global_landmark, neutral_landmark)
+        #print(y_global_warp.shape)
+        #y_global_warp = y_global_warp.detach().requires_grad_(True)
+        warp_loss = F.l1_loss(neutral_image, y_global_warp)
+        #end_time = time.time()
+
+        #execution_time = end_time - start_time
+
+        #print(f"warp時間: {execution_time} 秒")
+###處理ID這塊
+        #start_time = time.time()    
+        y_global_warp_float = y_global_warp.float()
+        #y_global_warp = y_global_warp.clone().detach().requires_grad_(True)
+        transform = T.Resize((128,128))
+        if neutral_image.shape[3] == int(64):            
+            y_global_warp_float = transform(y_global_warp_float)
+            
+            neutral_image = transform(neutral_image)
+        ID_classified = self.ID_classifier(neutral_image, y_global_warp_float)
+        ID_target = torch.ones(batch, dtype=torch.float32).unsqueeze(1).to("cuda")
+        ID_loss = self.ID_loss_fn(ID_classified, ID_target)
+        #end_time = time.time()
+
+        #execution_time = end_time - start_time
+
+        #print(f"ID時間: {execution_time} 秒")
+
+            ###待做 處理ID的部分               
+
+        #wandb.log({"landmark loss": landmark_loss.item()})
+        print("landmark loss", landmark_loss)
+        print("warp loss", warp_loss)
+        print("dlib loss", dlib_loss)
+        print("ID loss", ID_loss)
+        print("ce loss", ce_loss)          
+        
         if isnan(ce_loss):
             self.print(f"ERROR: found NaN loss: {ce_loss}")
             raise ValueError("NaN loss")
-        
+        ###做 Uncertainty Weigthing
+        #log_vars = nn.Parameter(torch.zeros(5))
+        total_loss = (ce_loss 
+        + self.landmark_loss_weight*landmark_loss
+        + self.warp_loss_weight*warp_loss
+        + self.dlib_loss_weight*dlib_loss
+        + self.ID_loss*ID_loss)
         if not exists(self.token_critic) or train_only_generator:
+            ###做 Uncertainty Weigthing
             
-            return ce_loss
+            return total_loss
 
         #token critic loss
 
@@ -676,11 +868,17 @@ class MaskGit(nn.Module):
                 labels=critic_labels,
                 cond_drop_prob=cond_drop_prob,
             )
-        print("ce_loss", ce_loss)
-        print("bce_loss", bce_loss)
-        return ce_loss + self.critic_loss_weight * bce_loss
 
+        
+        return total_loss + self.critic_loss_weight * bce_loss #+ y_points_loss
 
+    # def total_loss(self, ce_loss, y_points_loss, warp_loss, dlib_loss, ID_loss, log_vars):
+    #     losses = [ce_loss, y_points_loss, warp_loss, dlib_loss, ID_loss]
+    #     loss_sum = 0
+    #     for i, loss in enumerate(losses):
+    #         precision = torch.exp(-log_vars[i])  # 計算 1/σ^2
+    #         loss_sum += precision * loss + log_vars[i]  # 1/σ^2 * L + log(σ)
+    #     return loss_sum
 class Muse(nn.Module):
     def __init__(self, base: MaskGit, superres: MaskGit):
         super().__init__()
@@ -738,7 +936,7 @@ if __name__ == "__main__":
         run_name: str = None
         total_params: Optional[int] = None
         image_size: int = 64
-        num_tokens: int = 4096
+        num_tokens: int = 2048
         num_train_steps: int = -1
         num_epochs: int = 100000
         dim: int = 48
@@ -782,7 +980,7 @@ if __name__ == "__main__":
         results_dir: str = "try_results"
         logging_dir: Optional[str] = None
         vae_path: Optional[str] = r'C:\Style-exprGAN\exprGAN-main\image64_result64_vae\vae.400000.pt'
-        base_maskgit_path: Optional[str] = r"C:\Style-exprGAN\exprGAN-main\image64_maskgit_condimage_multi\maskgit_bases.300000.pt" 
+        base_maskgit_path: Optional[str] = r"C:\Style-exprGAN\exprGAN-main\image64_maskgit_condimage_multi\maskgit_bases.460000.pt" 
         superres_maskgit_path: Optional[str] = r"C:\Style-exprGAN\exprGAN-main\image64_results\maskgit_bases.1200000.pt"
         dataset_name: Optional[str] = None
         hf_split_name: Optional[str] = None
@@ -791,6 +989,7 @@ if __name__ == "__main__":
         attentionMap_dir = r"C:\Style-exprGAN\exprGAN-main\data\appearance_map"
         train_data_dir: Optional[str] = r"C:\Style-exprGAN\exprGAN-main\data\smile_data"
         cond_image_dir: Optional[str] = r"C:\Style-exprGAN\exprGAN-main\data\appearance_map"
+        ID_Classifier_path: Optional[str] = r'C:\Style-exprGAN\exprGAN-main\model\ID_classifier_model\ID_epoch7500.pth'    
         checkpoint_limit: Union[int, str] = None
         cond_drop_prob: float = 0.5
         scheduler_power: float = 1.0
@@ -844,11 +1043,17 @@ if __name__ == "__main__":
         ff_mult=args.ff_mult,
         xformers=True,
     ).to(device)
+
+    IdClassifier_checkpoint = torch.load(args.ID_Classifier_path)    
+    IdClassifier_model=IdClassifier()
+    IdClassifier_model.load_state_dict(IdClassifier_checkpoint)
+    IdClassifier_model.requires_grad_(False)
     # transformer_checkpoint = torch.load(args.maskgit_path)
     # transformer.load_state_dict(transformer_checkpoint)
     base_maskgit = MaskGit(
         vae=vae,  # vqgan vae
-        transformer=transformer,  # transformer        
+        transformer=transformer,  # transformer
+        Id_classifier=IdClassifier_model,        
         image_size=args.image_size,  # image size
         cond_drop_prob=args.cond_drop_prob,  # conditional dropout, for classifier free guidance
         cond_image_size=args.cond_image_size,
@@ -928,7 +1133,7 @@ if __name__ == "__main__":
         return None
     extensions = ["jpg", "jpeg", "png", "webp"]
     save_dir_path =  r"C:\Style-exprGAN\exprGAN-main\data\lower_image_file"   
-    kmeans_path = r"C:\Style-exprGAN\exprGAN-main\data\smile_data\kmeans_0"
+    kmeans_path = r"C:\Style-exprGAN\exprGAN-main\data\neutral_crop_equalize_brightnes_128"
     ###產生lower image
     # for i in range(5):
     #     kmeans_path = fr"C:\Style-exprGAN\exprGAN-main\data\smile_data\kmeans_{i}"
@@ -953,7 +1158,7 @@ if __name__ == "__main__":
     #         save_dir.mkdir(exist_ok=True, parents=True)
     #         save_file = save_dir.joinpath(f"{image_name}")
     #         save_image(images, save_file, "png")
-    image_name = "S109_006_00000015.png"
+    image_name = "S045_003_00000001.png"
     neutral_img_path = os.path.join(kmeans_path, image_name)
     neutral_image = Image.open(neutral_img_path)
     neutral_image = transform(neutral_image).unsqueeze(0).to("cuda")
@@ -970,12 +1175,12 @@ if __name__ == "__main__":
                 timesteps=18
             ).to("cuda")
     
-
+    print(image)
 
 
     save_dir = Path(args.results_dir).joinpath("MaskGit")
     save_dir.mkdir(exist_ok=True, parents=True)
-    save_file = save_dir.joinpath(f"maskgit_{12}.png")
+    save_file = save_dir.joinpath(f"maskgit_{13}.png")
     
     validation_image = neutral_image_batch.squeeze(0)
     cond_image = kmeans_transform_list.squeeze(0)
