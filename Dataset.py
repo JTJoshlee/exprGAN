@@ -24,16 +24,16 @@ class Dataset(Dataset):
         ])
         self.noise_std = 70
         self.neutral_indices = list(range(len(self.neutral_images)))
-        self.neutral_indices.extend(self.neutral_indices)
+        self.neutral_indices *= 4
         self.smile_indices = list(range(len(self.smile_images)))
-        self.smile_indices.extend(self.smile_indices)
-        half_length = len(self.neutral_indices) //2
-        neutral_second_half = self.neutral_indices[half_length:]
-        smile_second_half = self.smile_indices[half_length:]
+        self.smile_indices *= 4
+        quarter_length = len(self.neutral_indices) //4
+        neutral_second_half = self.neutral_indices[quarter_length:]
+        smile_second_half = self.smile_indices[quarter_length:]
         random.shuffle(neutral_second_half)
         random.shuffle(smile_second_half)
-        self.neutral_indices = self.neutral_indices[:half_length] + neutral_second_half
-        self.smile_indices = self.smile_indices[:half_length] + smile_second_half
+        self.neutral_indices = self.neutral_indices[:quarter_length] + neutral_second_half
+        self.smile_indices = self.smile_indices[:quarter_length] + smile_second_half
         
         # self.neutral_used = set()  # 用來追蹤已選擇的 neutral 圖片索引
         # self.smile_used = set()    # 用來追蹤已選擇的 smile 圖片索引   
@@ -125,7 +125,7 @@ class Dataset(Dataset):
     
     def __len__(self):
         
-        return 2*len(self.neutral_images)
+        return 4*len(self.neutral_images)
 
 
 
